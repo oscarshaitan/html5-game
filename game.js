@@ -77,13 +77,54 @@ const AudioEngine = {
     masterGain: null,
     isMuted: false,
     currentMusic: null,
-    musicType: 'none', // none, normal, threat
+    musicType: 'none',
+    musicStep: 0,
+    musicVol: 0.5,
+    sfxVol: 0.7,
+    melodies: {
+        normal: [261.63, 329.63, 392.00, 329.63, 261.63, 329.63, 392.00, 523.25], // C4, E4, G4, E4, C4, E4, G4, C5
+        threat: [130.81, 155.56, 185.00, 155.56, 130.81, 155.56, 185.00, 220.00]  // C3, Eb3, Gb3, Eb3, C3, Eb3, Gb3, A3
+    },
 
     init() {
-        if (this.ctx) return;
+        if (this.ctx) {
+            if (this.ctx.state === 'suspended') this.ctx.resume();
+            return;
+        }
         this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+
         this.masterGain = this.ctx.createGain();
         this.masterGain.connect(this.ctx.destination);
+
+        this.musicGain = this.ctx.createGain();
+        this.musicGain.gain.setValueAtTime(this.musicVol, this.ctx.currentTime);
+        this.musicGain.connect(this.masterGain);
+
+        this.sfxGain = this.ctx.createGain();
+        this.sfxGain.gain.setValueAtTime(this.sfxVol, this.ctx.currentTime);
+        this.sfxGain.connect(this.masterGain);
+    },
+
+    setVolume(type, val) {
+        this.init();
+        const v = parseFloat(val);
+        if (type === 'music') {
+            this.musicVol = v;
+            if (this.musicGain) this.musicGain.gain.setTargetAtTime(v, this.ctx.currentTime, 0.1);
+        } else if (type === 'sfx') {
+            this.sfxVol = v;
+            if (this.sfxGain) this.sfxGain.gain.setTargetAtTime(v, this.ctx.currentTime, 0.1);
+        }
+        localStorage.setItem('neonAudioSettings', JSON.stringify({ music: this.musicVol, sfx: this.sfxVol }));
+    },
+
+    loadSettings() {
+        const saved = localStorage.getItem('neonAudioSettings');
+        if (saved) {
+            const data = JSON.parse(saved);
+            this.musicVol = data.music ?? 0.5;
+            this.sfxVol = data.sfx ?? 0.7;
+        }
     },
 
     toggleMute() {
@@ -96,11 +137,12 @@ const AudioEngine = {
 
     playSFX(type) {
         if (!this.ctx || this.isMuted) return;
+        if (this.ctx.state === 'suspended') this.ctx.resume();
 
         const osc = this.ctx.createOscillator();
         const gain = this.ctx.createGain();
         osc.connect(gain);
-        gain.connect(this.masterGain);
+        gain.connect(this.sfxGain);
 
         const now = this.ctx.currentTime;
 
@@ -109,8 +151,8 @@ const AudioEngine = {
                 osc.type = 'square';
                 osc.frequency.setValueAtTime(400, now);
                 osc.frequency.exponentialRampToValueAtTime(100, now + 0.1);
-                gain.gain.setValueAtTime(0.1, now);
-                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                gain.gain.setValueAtTime(0.05, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
                 osc.start(now);
                 osc.stop(now + 0.1);
                 break;
@@ -118,7 +160,7 @@ const AudioEngine = {
                 osc.type = 'sawtooth';
                 osc.frequency.setValueAtTime(100, now);
                 osc.frequency.exponentialRampToValueAtTime(10, now + 0.3);
-                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.setValueAtTime(0.1, now);
                 gain.gain.linearRampToValueAtTime(0, now + 0.3);
                 osc.start(now);
                 osc.stop(now + 0.3);
@@ -127,7 +169,7 @@ const AudioEngine = {
                 osc.type = 'triangle';
                 osc.frequency.setValueAtTime(150, now);
                 osc.frequency.linearRampToValueAtTime(50, now + 0.2);
-                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.setValueAtTime(0.2, now);
                 gain.gain.linearRampToValueAtTime(0, now + 0.2);
                 osc.start(now);
                 osc.stop(now + 0.2);
@@ -136,8 +178,8 @@ const AudioEngine = {
                 osc.type = 'sine';
                 osc.frequency.setValueAtTime(200, now);
                 osc.frequency.exponentialRampToValueAtTime(800, now + 0.2);
-                gain.gain.setValueAtTime(0.1, now);
-                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                gain.gain.setValueAtTime(0.05, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
                 osc.start(now);
                 osc.stop(now + 0.2);
                 break;
@@ -146,38 +188,44 @@ const AudioEngine = {
 
     updateMusic() {
         if (!this.ctx) return;
+        if (this.ctx.state === 'suspended') this.ctx.resume();
 
         const hasThreat = enemies.some(e => e.type === 'boss' || e.isMutant);
         const targetType = hasThreat ? 'threat' : 'normal';
 
         if (this.musicType === targetType) return;
         this.musicType = targetType;
+        this.musicStep = 0;
 
-        // Simple 8-bit beat
         if (this.currentMusic) clearInterval(this.currentMusic);
 
-        const tempo = targetType === 'threat' ? 150 : 300; // lower is faster for setInterval
-        const freq = targetType === 'threat' ? 60 : 110;
+        const tempo = targetType === 'threat' ? 200 : 400; // ms per note
+        const melody = this.melodies[targetType];
 
         this.currentMusic = setInterval(() => {
             if (this.isMuted || gameState !== 'playing') return;
+
+            const freq = melody[this.musicStep % melody.length];
+            this.musicStep++;
+
             const osc = this.ctx.createOscillator();
             const g = this.ctx.createGain();
             osc.connect(g);
-            g.connect(this.masterGain);
+            g.connect(this.musicGain);
 
-            osc.type = targetType === 'threat' ? 'sawtooth' : 'pulse' || 'square';
+            osc.type = targetType === 'threat' ? 'sawtooth' : 'square';
             osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
-            g.gain.setValueAtTime(0.05, this.ctx.currentTime);
-            g.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.1);
+            g.gain.setValueAtTime(0.03, this.ctx.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.15);
 
             osc.start();
-            osc.stop(this.ctx.currentTime + 0.1);
+            osc.stop(this.ctx.currentTime + 0.15);
         }, tempo);
     }
 };
 
 // --- Initialization ---
+AudioEngine.loadSettings();
 window.onload = () => {
     canvas = document.getElementById('gameCanvas');
     ctx = canvas.getContext('2d');
@@ -550,6 +598,15 @@ window.toggleMute = function () {
     const text = `SOUND: ${muted ? 'OFF' : 'ON'}`;
     if (document.getElementById('mute-btn-hud')) document.getElementById('mute-btn-hud').innerText = text;
     if (document.getElementById('mute-btn-pause')) document.getElementById('mute-btn-pause').innerText = text;
+    if (document.getElementById('master-mute-btn')) document.getElementById('master-mute-btn').innerText = text;
+};
+
+window.setMusicVolume = function (val) {
+    AudioEngine.setVolume('music', val);
+};
+
+window.setSFXVolume = function (val) {
+    AudioEngine.setVolume('sfx', val);
 };
 
 window.saveGame = function () {
@@ -615,6 +672,10 @@ window.loadGame = function () {
 
     document.getElementById('start-screen').classList.add('hidden');
     gameState = 'playing';
+
+    // Initialize audio sliders
+    if (document.getElementById('music-slider')) document.getElementById('music-slider').value = AudioEngine.musicVol;
+    if (document.getElementById('sfx-slider')) document.getElementById('sfx-slider').value = AudioEngine.sfxVol;
 
     updateUI();
     // If we loaded into an active wave, we might want to just reset to prep phase
