@@ -259,6 +259,11 @@
 
     <h2 id="ui">04. USER INTERFACE</h2>
     <div class="method">
+        <div class="method-name">loadGame()</div>
+        <div class="desc">Parses <code>localStorage</code> and restores state, including persistent Core Tower levels
+            and localized Rift (Path) data.</div>
+    </div>
+    <div class="method">
         <div class="method-name">updateUI()</div>
         <div class="desc">Syncs HTML elements (money, lives, timers) with the internal engine state.</div>
     </div>
@@ -273,8 +278,8 @@
     </div>
     <div class="method">
         <div class="method-name">updateWavePanel()</div>
-        <div class="desc">Calculates incoming wave statistics (enemy count, mutant chance, threat level) and populates
-            the Wave Intelligence modal.</div>
+        <div class="desc">Calculates incoming wave statistics (enemy count, sector evolution odds, active mutations) and
+            populates the Wave Intelligence modal with live-syncing data.</div>
     </div>
 
     <h2 id="audio">05. AUDIO ENGINE</h2>
