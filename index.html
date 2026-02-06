@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Neon Defense</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+
+        <div id="ui-layer">
+            <div id="stats-bar">
+                <div class="stat">WAVE: <span id="wave-display">1</span></div>
+                <div id="timer-display">NEXT WAVE: 30s</div>
+                <div class="stat">LIVES: <span id="lives-display">20</span></div>
+                <div class="stat highlight">CREDITS: <span id="money-display">100</span></div>
+                <div class="stat" id="enemy-info">ENEMIES: 0</div>
+                <button id="pause-btn" onclick="togglePause()">II</button>
+            </div>
+
+            <div id="wave-controls">
+                <button id="skip-btn" onclick="skipPrep()">START WAVE</button>
+            </div>
+
+            <div id="selection-panel" class="hidden">
+                <div id="selected-stats">
+                    <h3>TOWER INFO</h3>
+                    <div id="sel-type">Type: Basic</div>
+                    <div id="sel-level">Level: 1</div>
+                    <div id="sel-damage">Damage: 10</div>
+                    <div id="sel-range">Range: 100</div>
+                </div>
+                <div class="actions">
+                    <button class="action-btn upgrade" onclick="upgradeTower()">
+                        UPGRADE <span id="upgrade-cost">($50)</span>
+                    </button>
+                    <button class="action-btn sell" onclick="sellTower()">
+                        SELL <span id="sell-refund">($35)</span>
+                    </button>
+                    <button class="action-btn close" onclick="deselectTower()">X</button>
+                </div>
+            </div>
+
+            <div id="controls-bar">
+                <div class="tower-selector selected" data-type="basic" onclick="selectTower('basic')">
+                    <div class="key-hint">Q</div>
+                    <div class="tower-icon basic-icon"></div>
+                    <div class="tower-cost">50</div>
+                </div>
+                <div class="tower-selector" data-type="rapid" onclick="selectTower('rapid')">
+                    <div class="key-hint">W</div>
+                    <div class="tower-icon rapid-icon"></div>
+                    <div class="tower-cost">120</div>
+                </div>
+                <div class="tower-selector" data-type="sniper" onclick="selectTower('sniper')">
+                    <div class="key-hint">E</div>
+                    <div class="tower-icon sniper-icon"></div>
+                    <div class="tower-cost">200</div>
+                </div>
+            </div>
+
+            <div id="game-over-screen" class="hidden">
+                <h1>SYSTEM FAILURE</h1>
+                <p>SECTOR OVERRUN</p>
+                <button onclick="resetGame()">REBOOT SYSTEM</button>
+            </div>
+
+            <div id="pause-menu" class="hidden">
+                <h1>PAUSED</h1>
+                <div class="menu-buttons">
+                    <button onclick="togglePause()">RESUME</button>
+                    <button onclick="saveGame()">FORCE SAVE</button>
+                    <button onclick="fullReset()">RESET DATA</button>
+                </div>
+            </div>
+
+            <div id="start-screen">
+                <h1>NEON DEFENSE</h1>
+                <p>PROTECT THE CORE</p>
+                <button onclick="startGame()">INITIATE</button>
+            </div>
+        </div>
+    </div>
+    <script src="game.js"></script>
+</body>
+
+</html>
