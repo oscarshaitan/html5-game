@@ -12,6 +12,12 @@ const TOWERS = {
     sniper: { cost: 200, range: 250, damage: 50, cooldown: 90, color: '#ff00ac', type: 'sniper' }
 };
 
+window.addDebugMoney = function () {
+    money += 1000000;
+    updateUI();
+    saveGame();
+}
+
 const ENEMIES = {
     basic: { hp: 30, speed: 1.5, color: '#ff0000', reward: 10, width: 20 },
     fast: { hp: 20, speed: 2.5, color: '#ffff00', reward: 15, width: 16 },
@@ -19,7 +25,7 @@ const ENEMIES = {
     boss: { hp: 500, speed: 0.5, color: '#ff8800', reward: 200, width: 40 },
     splitter: { hp: 80, speed: 1.2, color: '#00ff41', reward: 40, width: 28, type: 'splitter' },
     mini: { hp: 20, speed: 2.0, color: '#00ff41', reward: 5, width: 12, type: 'mini' },
-    healer: { hp: 120, speed: 0.7, color: '#00ff41', reward: 50, width: 28, type: 'healer' },
+    bulwark: { hp: 350, speed: 0.6, color: '#fcee0a', reward: 60, width: 32, type: 'bulwark' },
     shifter: { hp: 60, speed: 1.5, color: '#ff00ac', reward: 60, width: 20, type: 'shifter' }
 };
 
@@ -102,10 +108,68 @@ const AudioEngine = {
     },
 
     melodies: {
-        normal: {
-            lead: ['C4', 'E4', 'G4', 0, 'F4', 'A4', 'C5', 0, 'G4', 'B4', 'D5', 0, 'C5', 'G4', 'E4', 'D4'],
-            bass: ['C2', 0, 'G2', 'C2', 'F2', 0, 'C3', 'F2', 'G2', 0, 'D3', 'G2', 'C2', 'G2', 'E2', 'D2']
-        },
+        normal: [
+            { // 01: Original High-Tech
+                lead: ['C4', 'E4', 'G4', 0, 'F4', 'A4', 'C5', 0, 'G4', 'B4', 'D5', 0, 'C5', 'G4', 'E4', 'D4'],
+                bass: ['C2', 0, 'G2', 'C2', 'F2', 0, 'C3', 'F2', 'G2', 0, 'D3', 'G2', 'C2', 'G2', 'E2', 'D2']
+            },
+            { // 02: Aeolian Chill
+                lead: ['A4', 'C5', 'E5', 0, 'F4', 'A4', 'C5', 0, 'C4', 'E4', 'G4', 0, 'G4', 'B4', 'D5', 0],
+                bass: ['A2', 0, 'E2', 'A2', 'F2', 0, 'C3', 'F2', 'C2', 0, 'G2', 'C2', 'G2', 0, 'D3', 'G2']
+            },
+            { // 03: Dorian Tech
+                lead: ['D4', 'F4', 'A4', 'C5', 'G4', 'Bb4', 'D5', 0, 'F4', 'A4', 'C5', 0, 'C4', 'E4', 'G4', 0],
+                bass: ['D2', 0, 'A2', 'D2', 'G2', 0, 'D3', 'G2', 'F2', 0, 'C3', 'F2', 'C2', 0, 'G2', 'C2']
+            },
+            { // 04: Phrygian Edge
+                lead: ['E4', 'F4', 'G4', 0, 'F4', 'G4', 'A4', 0, 'G4', 'Ab4', 'C5', 0, 'Eb5', 'D5', 'C5', 'Bb4'],
+                bass: ['E2', 0, 'B2', 'E2', 'F2', 0, 'C3', 'F2', 'G2', 0, 'D3', 'G2', 'Ab2', 0, 'Eb3', 'Ab2']
+            },
+            { // 05: Pentatonic Pulse
+                lead: ['C4', 'D4', 'E4', 'G4', 'A4', 'G4', 'E4', 'D4', 'C5', 'A4', 'G4', 'E4', 'D4', 'C4', 'D4', 'E4'],
+                bass: ['C2', 'C2', 'G2', 'G2', 'A2', 'A2', 'F2', 'F2', 'C2', 'C2', 'G2', 'G2', 'A2', 'A2', 'F2', 'F2']
+            },
+            { // 06: Lydian Dream
+                lead: ['C4', 'E4', 'G4', 'B4', 'D5', 'B4', 'G4', 'E4', 'F4', 'A4', 'C5', 'E5', 'D5', 'C5', 'A4', 'F4'],
+                bass: ['C2', 0, 'G2', 'C2', 'D2', 0, 'A2', 'D2', 'F2', 0, 'C3', 'F2', 'G2', 0, 'D3', 'G2']
+            },
+            { // 07: Mixolydian Groove
+                lead: ['G4', 'B4', 'D5', 'F5', 'E5', 'C5', 'B4', 'G4', 'A4', 'C5', 'E5', 'G4', 'F4', 'D4', 'B3', 'G3'],
+                bass: ['G2', 0, 'D3', 'G2', 'F2', 0, 'C3', 'F2', 'C2', 0, 'G2', 'C2', 'Bb2', 0, 'F2', 'Bb2']
+            },
+            { // 08: Chromatic Tension
+                lead: ['C4', 'Db4', 'D4', 'Eb4', 'E4', 'Eb4', 'D4', 'Db4', 'C4', 'G3', 'C4', 'Db4', 'D4', 'A3', 'D4', 'Eb4'],
+                bass: ['C2', 'Db2', 'D2', 'Eb2', 'E2', 'Eb2', 'D2', 'Db2', 'C2', 'G1', 'C2', 'Db2', 'D2', 'A1', 'D2', 'Eb2']
+            },
+            { // 09: Arp Madness
+                lead: ['C4', 'G4', 'C5', 'G4', 'E4', 'B4', 'E5', 'B4', 'F4', 'C5', 'F5', 'C5', 'G4', 'D5', 'G5', 'D5'],
+                bass: ['C2', 0, 0, 0, 'E2', 0, 0, 0, 'F2', 0, 0, 0, 'G2', 0, 0, 0]
+            },
+            { // 10: Syncopated Flow
+                lead: [0, 'C4', 0, 'E4', 'G4', 0, 'F4', 0, 0, 'A4', 0, 'C5', 'G4', 0, 'D5', 0],
+                bass: ['C2', 0, 'G2', 0, 'C2', 0, 'F2', 0, 'F2', 0, 'C3', 0, 'G2', 0, 'D3', 0]
+            },
+            { // 11: Minor Gravity
+                lead: ['G4', 'Bb4', 'D5', 'Eb5', 'D5', 'Bb4', 'G4', 'F4', 'G4', 'D4', 'G4', 'Bb4', 'C5', 'Bb4', 'A4', 'F4'],
+                bass: ['G2', 0, 'D3', 'G2', 'Eb2', 0, 'Bb2', 'Eb2', 'C2', 0, 'G2', 'C2', 'F2', 0, 'C3', 'F2']
+            },
+            { // 12: Cyber Funk
+                lead: ['C4', 0, 'C4', 'Eb4', 0, 'F4', 'Gb4', 'G4', 0, 'Bb4', 0, 'C5', 0, 'G4', 'Eb4', 'C4'],
+                bass: ['C2', 'C2', 0, 'Eb2', 'Eb2', 0, 'F2', 'G2', 'C2', 'C2', 0, 'Bb1', 'Bb1', 0, 'G1', 'F1']
+            },
+            { // 13: Neon Echo
+                lead: ['C5', 0, 'G4', 0, 'E4', 0, 'C4', 0, 'D5', 0, 'A4', 0, 'F4', 0, 'D4', 0],
+                bass: ['C2', 'G2', 'C3', 'G2', 'A2', 'E3', 'A3', 'E3', 'F2', 'C3', 'F3', 'C3', 'G2', 'D3', 'G3', 'D3']
+            },
+            { // 14: Dark Wave
+                lead: ['A3', 'C4', 'E4', 'A4', 'G4', 'E4', 'C4', 'B3', 'F3', 'A3', 'C4', 'F4', 'E4', 'C4', 'A3', 'G3'],
+                bass: ['A1', 'A1', 'E2', 'E2', 'G1', 'G1', 'D2', 'D2', 'F1', 'F1', 'C2', 'C2', 'E1', 'E1', 'B1', 'B1']
+            },
+            { // 15: Final Stand
+                lead: ['E4', 'E4', 'G4', 'A4', 'B4', 'B4', 'D5', 'E5', 'D5', 'D5', 'B4', 'A4', 'G4', 'G4', 'E4', 'D4'],
+                bass: ['E2', 'E2', 'G2', 'G2', 'A2', 'A2', 'B2', 'B2', 'D3', 'D3', 'B2', 'B2', 'A2', 'A2', 'G2', 'F2']
+            }
+        ],
         threat: {
             lead: ['C5', 'Eb5', 'G5', 'Eb5', 'Gb5', 'Eb5', 'C5', 'Bb4', 'C5', 'Eb5', 'Gb5', 'Eb5', 'F5', 'Eb5', 'D5', 'Bb4'],
             bass: ['C2', 0, 'C2', 0, 'Eb2', 0, 'Eb2', 0, 'Gb2', 0, 'Gb2', 0, 'G2', 0, 'G2', 0]
@@ -218,14 +282,24 @@ const AudioEngine = {
         const hasThreat = enemies.some(e => e.type === 'boss' || e.isMutant);
         const targetType = hasThreat ? 'threat' : 'normal';
 
-        if (this.musicType === targetType) return;
+        // Calculate which normal melody to use based on wave
+        const normalMelodyIndex = (wave - 1) % this.melodies.normal.length;
+
+        // Check if we need to change music
+        // Change if: type changes OR (type is normal AND wave-index changes)
+        if (this.musicType === targetType) {
+            if (targetType === 'threat') return; // Threat stays threat
+            if (this.currentNormalIndex === normalMelodyIndex) return; // Normal stays same wave melody
+        }
+
         this.musicType = targetType;
+        this.currentNormalIndex = normalMelodyIndex;
         this.musicStep = 0;
 
         if (this.currentMusic) clearInterval(this.currentMusic);
 
         const stepTime = targetType === 'threat' ? 0.125 : 0.2; // 16th note equivalent
-        const melody = this.melodies[targetType];
+        const melody = targetType === 'threat' ? this.melodies.threat : this.melodies.normal[normalMelodyIndex];
 
         this.currentMusic = setInterval(() => {
             if (this.isMuted || gameState !== 'playing') return;
@@ -1074,7 +1148,7 @@ function startWave() {
         } else {
             const chance = Math.random();
             if (chance < 0.08 && wave >= 30) type = 'shifter';
-            else if (chance < 0.15 && wave >= 20) type = 'healer';
+            else if (chance < 0.15 && wave >= 20) type = 'bulwark';
             else if (chance < 0.30 && wave >= 15) type = 'splitter';
             else if (chance < 0.50) type = 'fast';
             else if (chance < 0.70) type = 'tank';
@@ -1733,6 +1807,73 @@ function spawnEnemy() {
     });
 }
 
+function spawnSubUnits(parent) {
+    const miniCount = 2 + Math.floor(Math.random() * 2); // 2 or 3 minis
+    const config = ENEMIES.mini;
+
+    for (let i = 0; i < miniCount; i++) {
+        // Offset minis slightly
+        const offsetX = (Math.random() - 0.5) * 20;
+        const offsetY = (Math.random() - 0.5) * 20;
+
+        enemies.push({
+            ...config,
+            name: "MINI",
+            maxHp: parent.maxHp * 0.2, // Minis have 20% of parent total hp
+            hp: parent.maxHp * 0.2,
+            speed: parent.speed * 1.5, // Minis are faster
+            reward: config.reward,
+            color: parent.color,
+            pathIndex: parent.pathIndex,
+            x: parent.x + offsetX,
+            y: parent.y + offsetY,
+            currentPath: parent.currentPath,
+            riftLevel: parent.riftLevel,
+            isMutant: parent.isMutant,
+            mutationKey: parent.mutationKey,
+            frozen: 0,
+            type: 'mini'
+        });
+    }
+}
+
+window.debugSpawn = function (type) {
+    // Clone logic from spawnEnemy for a specific type
+    const config = ENEMIES[type];
+    if (!config) return;
+
+    const pathIndex = Math.floor(Math.random() * paths.length);
+    const chosenRift = paths[pathIndex];
+    const chosenPathPoints = chosenRift.points;
+    const riftLevel = chosenRift.level || 1;
+
+    let hp = config.hp * (1 + (wave * 0.4));
+    if (riftLevel > 1) {
+        hp *= 1 + (riftLevel - 1) * 0.5;
+    }
+
+    enemies.push({
+        ...config,
+        name: `DEBUG ${type.toUpperCase()}`,
+        maxHp: hp,
+        hp: hp,
+        speed: config.speed,
+        reward: config.reward,
+        color: config.color,
+        pathIndex: 0,
+        x: chosenPathPoints[0].x,
+        y: chosenPathPoints[0].y,
+        currentPath: chosenPathPoints,
+        riftLevel: riftLevel,
+        isMutant: false,
+        frozen: 0,
+        type: type
+    });
+
+    isWaveActive = true; // Ensure systems process it
+    updateUI();
+};
+
 function updateEnemies() {
     for (let i = enemies.length - 1; i >= 0; i--) {
         let e = enemies[i];
@@ -1771,16 +1912,9 @@ function updateEnemies() {
             e.y += (dy / dist) * e.speed;
         }
 
-        // --- Healer Logic ---
-        if (e.type === 'healer' && frameCount % 120 === 0) { // Heal every 2 secs
-            createParticles(e.x, e.y, '#00ff41', 5); // Visual cue
-            enemies.forEach(other => {
-                if (other !== e && Math.hypot(other.x - e.x, other.y - e.y) < 100) {
-                    const healAmt = other.maxHp * 0.15;
-                    other.hp = Math.min(other.maxHp, other.hp + healAmt);
-                    if (frameCount % 10 === 0) createParticles(other.x, other.y, '#ffffff', 2);
-                }
-            });
+        // Bulwark pulsing visuals
+        if (e.type === 'bulwark' && frameCount % 30 === 0) {
+            createParticles(e.x, e.y, '#fcee0a', 2);
         }
 
         // --- Phase Shifter Logic ---
@@ -1810,12 +1944,25 @@ function updateTowers() {
         let target = null;
         let minDist = Infinity;
 
-        for (let e of enemies) {
-            if (e.isInvisible) continue; // Ignore stealth units
-            const dist = Math.hypot(e.x - t.x, e.y - t.y);
-            if (dist <= range && dist < minDist) {
-                target = e;
-                minDist = dist;
+        // Taunt Check first
+        const taunters = enemies.filter(e => e.type === 'bulwark' && !e.isInvisible && Math.hypot(e.x - t.x, e.y - t.y) <= range);
+        if (taunters.length > 0) {
+            // Pick closest taunter
+            taunters.forEach(e => {
+                const dist = Math.hypot(e.x - t.x, e.y - t.y);
+                if (dist < minDist) {
+                    target = e;
+                    minDist = dist;
+                }
+            });
+        } else {
+            for (let e of enemies) {
+                if (e.isInvisible) continue; // Ignore stealth units
+                const dist = Math.hypot(e.x - t.x, e.y - t.y);
+                if (dist <= range && dist < minDist) {
+                    target = e;
+                    minDist = dist;
+                }
             }
         }
 
@@ -1966,7 +2113,7 @@ function updateUI() {
     let typeText = '';
 
     if (isWaveActive && count > 0) {
-        const counts = { BASIC: 0, FAST: 0, TANK: 0, BOSS: 0, MUTANT: 0, SPLITTER: 0, MINI: 0, HEALER: 0, SHIFTER: 0 };
+        const counts = { BASIC: 0, FAST: 0, TANK: 0, BOSS: 0, MUTANT: 0, SPLITTER: 0, MINI: 0, BULWARK: 0, SHIFTER: 0 };
 
         // Count queue
         for (const t of spawnQueue) {
@@ -1988,7 +2135,7 @@ function updateUI() {
         if (counts['TANK']) html += `<div class="enemy-count-group" title="Tank"><div class="enemy-icon-small icon-tank"></div>${counts['TANK']}</div>`;
         if (counts['SPLITTER']) html += `<div class="enemy-count-group" title="Splitter"><div class="enemy-icon-small icon-splitter"></div>${counts['SPLITTER']}</div>`;
         if (counts['MINI']) html += `<div class="enemy-count-group" title="Mini"><div class="enemy-icon-small icon-mini"></div>${counts['MINI']}</div>`;
-        if (counts['HEALER']) html += `<div class="enemy-count-group" title="Healer"><div class="enemy-icon-small icon-healer"></div>${counts['HEALER']}</div>`;
+        if (counts['BULWARK']) html += `<div class="enemy-count-group" title="Bulwark"><div class="enemy-icon-small icon-bulwark"></div>${counts['BULWARK']}</div>`;
         if (counts['SHIFTER']) html += `<div class="enemy-count-group" title="Shifter"><div class="enemy-icon-small icon-shifter"></div>${counts['SHIFTER']}</div>`;
         if (counts['BOSS']) html += `<div class="enemy-count-group" title="Boss"><div class="enemy-icon-small icon-boss"></div>${counts['BOSS']}</div>`;
         if (counts['MUTANT']) html += `<div class="enemy-count-group" title="Mutant"><div class="enemy-icon-small icon-mutant"></div>${counts['MUTANT']}</div>`;

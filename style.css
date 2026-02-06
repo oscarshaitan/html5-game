@@ -154,11 +154,9 @@ canvas {
     transform: scale(0.6);
 }
 
-.icon-healer {
-    color: #00ff41;
-    border-radius: 50%;
-    border: 2px double currentColor;
-    background: transparent !important;
+.icon-bulwark {
+    color: #fcee0a;
+    clip-path: polygon(30% 0%, 70% 0%, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0% 70%, 0% 30%);
 }
 
 .icon-shifter {
@@ -854,4 +852,59 @@ button:hover {
     font-size: 0.5rem;
     color: white;
     white-space: nowrap;
+}
+
+/* Debug Menu Styles */
+.debug-menu {
+    border: 1px dashed var(--neon-yellow);
+    padding: 15px;
+    margin: 15px 0;
+    background: rgba(252, 238, 10, 0.05);
+    border-radius: 8px;
+    width: 100%;
+}
+
+.debug-menu h3 {
+    color: var(--neon-yellow);
+    font-size: 0.9rem;
+    margin-bottom: 12px;
+    text-align: center;
+    letter-spacing: 2px;
+}
+
+.debug-btn {
+    width: 100%;
+    font-size: 0.8rem;
+    padding: 8px;
+    margin-bottom: 10px;
+    border-color: var(--neon-yellow);
+    color: var(--neon-yellow);
+    box-shadow: 0 0 5px var(--neon-yellow);
+}
+
+.debug-btn:hover {
+    background: var(--neon-yellow);
+    box-shadow: 0 0 15px var(--neon-yellow);
+}
+
+.debug-spawn-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+}
+
+.debug-spawn-btn {
+    font-size: 0.6rem;
+    padding: 5px;
+    background: transparent;
+    border: 1px solid var(--neon-blue);
+    color: var(--neon-blue);
+    cursor: pointer;
+    text-transform: uppercase;
+}
+
+.debug-spawn-btn:hover {
+    background: var(--neon-blue);
+    color: black;
+    box-shadow: 0 0 10px var(--neon-blue);
 }

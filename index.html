@@ -143,6 +143,21 @@
                         </div>
                         <button id="master-mute-btn" onclick="toggleMute()">SOUND: ON</button>
                     </div>
+
+                    <div class="debug-menu">
+                        <h3>COMMAND CENTER</h3>
+                        <button class="debug-btn money-btn" onclick="addDebugMoney()">+1M CREDITS</button>
+                        <div class="debug-spawn-grid">
+                            <button class="debug-spawn-btn" onclick="debugSpawn('basic')">BASIC</button>
+                            <button class="debug-spawn-btn" onclick="debugSpawn('fast')">FAST</button>
+                            <button class="debug-spawn-btn" onclick="debugSpawn('tank')">TANK</button>
+                            <button class="debug-spawn-btn" onclick="debugSpawn('splitter')">SPLIT</button>
+                            <button class="debug-spawn-btn" onclick="debugSpawn('bulwark')">BULW</button>
+                            <button class="debug-spawn-btn" onclick="debugSpawn('shifter')">SHIFT</button>
+                            <button class="debug-spawn-btn" onclick="debugSpawn('boss')">BOSS</button>
+                        </div>
+                    </div>
+
                     <button onclick="fullReset()">RESET DATA</button>
                 </div>
             </div>
