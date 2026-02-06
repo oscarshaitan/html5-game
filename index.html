@@ -15,7 +15,8 @@
 
         <div id="ui-layer">
             <div id="stats-bar">
-                <div class="stat">WAVE: <span id="wave-display">1</span></div>
+                <div class="stat clickable" onclick="toggleWavePanel()">WAVE: <span id="wave-display">1</span> <span
+                        class="info-icon">ⓘ</span></div>
                 <div id="timer-display">NEXT WAVE: 30s</div>
                 <div class="stat">LIVES: <span id="lives-display">20</span></div>
                 <div class="stat highlight">CREDITS: <span id="money-display">100</span></div>
@@ -70,6 +71,33 @@
                 <h1>SYSTEM FAILURE</h1>
                 <p>SECTOR OVERRUN</p>
                 <button onclick="resetGame()">REBOOT SYSTEM</button>
+            </div>
+
+            <div id="wave-info-panel" class="hidden">
+                <div class="panel-header">
+                    <h2>WAVE INTELLIGENCE</h2>
+                    <button class="close-panel" onclick="toggleWavePanel()">X</button>
+                </div>
+                <div id="wave-intel-content">
+                    <div class="intel-group">
+                        <label>ENEMY CAPACITY:</label>
+                        <span id="intel-count">0</span>
+                    </div>
+                    <div class="intel-group">
+                        <label>MUTATION POTENTIAL:</label>
+                        <span id="intel-mutant-chance">0%</span>
+                    </div>
+                    <div class="intel-group">
+                        <label>THREAT LEVEL:</label>
+                        <span id="intel-threat">NORMAL</span>
+                    </div>
+                    <div class="intel-group">
+                        <label>SPECIAL DATA:</label>
+                        <ul id="intel-special">
+                            <li>None</li>
+                        </ul>
+                    </div>
+                </div>
             </div>
 
             <div id="pause-menu" class="hidden">

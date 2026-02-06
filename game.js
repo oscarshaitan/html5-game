@@ -94,8 +94,8 @@ const AudioEngine = {
 
     melodies: {
         normal: {
-            lead: ['C4', 0, 'E4', 0, 'G4', 0, 'E4', 0, 'A4', 0, 'G4', 0, 'E4', 0, 'D4', 0],
-            bass: ['C2', 'C2', 'G2', 'G2', 'A2', 'A2', 'F2', 'F2', 'C2', 'C2', 'G2', 'G2', 'A2', 'G2', 'F2', 'G2']
+            lead: ['C4', 'E4', 'G4', 0, 'F4', 'A4', 'C5', 0, 'G4', 'B4', 'D5', 0, 'C5', 'G4', 'E4', 'D4'],
+            bass: ['C2', 0, 'G2', 'C2', 'F2', 0, 'C3', 'F2', 'G2', 0, 'D3', 'G2', 'C2', 'G2', 'E2', 'D2']
         },
         threat: {
             lead: ['C5', 'Eb5', 'G5', 'Eb5', 'Gb5', 'Eb5', 'C5', 'Bb4', 'C5', 'Eb5', 'Gb5', 'Eb5', 'F5', 'Eb5', 'D5', 'Bb4'],
@@ -652,6 +652,56 @@ window.togglePause = function () {
         menu.classList.add('hidden');
     }
 };
+
+window.toggleWavePanel = function () {
+    const panel = document.getElementById('wave-info-panel');
+    if (panel.classList.contains('hidden')) {
+        updateWavePanel();
+        panel.classList.remove('hidden');
+    } else {
+        panel.classList.add('hidden');
+    }
+};
+
+function updateWavePanel() {
+    const nextWave = wave; // We show data for the currently incoming wave
+    const baseCount = 5 + Math.floor(nextWave * 2.5);
+
+    // Mutant Chance Math (mirroring startWave)
+    let baseMutantChance = 0.2;
+    let progression = nextWave > 50 ? (nextWave - 50) * 0.05 : 0;
+    let totalPotential = baseMutantChance + progression;
+    let activeMutantChance = totalPotential % 1.0;
+    if (activeMutantChance < 0.01 && totalPotential >= 1) activeMutantChance = 1.0;
+
+    const intensity = 1 + Math.floor(totalPotential);
+
+    document.getElementById('intel-count').innerText = baseCount;
+    document.getElementById('intel-mutant-chance').innerText = `${Math.round(activeMutantChance * 100)}% (x${intensity})`;
+
+    const threatTitle = nextWave % 10 === 0 ? "CRITICAL (BOSS)" : (nextWave % 5 === 0 ? "ELEVATED" : "NORMAL");
+    const threatSpan = document.getElementById('intel-threat');
+    threatSpan.innerText = threatTitle;
+    threatSpan.style.color = nextWave % 10 === 0 ? "var(--neon-pink)" : (nextWave % 5 === 0 ? "#ffcc00" : "white");
+
+    const specialList = document.getElementById('intel-special');
+    specialList.innerHTML = '';
+
+    if (nextWave % 10 === 0) specialList.innerHTML += "<li>Guaranteed BOSS spawn</li>";
+    if (nextWave % 20 === 0) specialList.innerHTML += "<li>New MUTATION event</li>";
+    if (nextWave > 50 && nextWave % 5 === 0 && nextWave % 10 !== 0) {
+        specialList.innerHTML += "<li>SURPRISE BOSS possible (25%)</li>";
+    }
+
+    // Path generation info
+    if (nextWave <= 50) {
+        if ((nextWave - 1) % 10 === 0 && nextWave > 1) specialList.innerHTML += "<li>NEW PATH detected</li>";
+    } else {
+        if ((nextWave - 1) % 5 === 0 && nextWave > 1) specialList.innerHTML += "<li>NEW PATH detected</li>";
+    }
+
+    if (specialList.innerHTML === '') specialList.innerHTML = "<li>No anomalies detected</li>";
+}
 
 window.toggleMute = function () {
     const muted = AudioEngine.toggleMute();
