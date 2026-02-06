@@ -61,7 +61,7 @@ canvas {
     border-radius: 5px;
     box-shadow: 0 0 10px var(--neon-blue);
     pointer-events: auto;
-    font-size: 1.2rem;
+    font-size: 0.8rem;
     font-weight: bold;
     z-index: 60;
     /* Ensure on top */
@@ -328,7 +328,7 @@ canvas {
     border-radius: 50%;
     margin-left: 10px;
     padding: 0;
-    font-size: 1.2rem;
+    font-size: 0.8rem;
     display: flex;
     justify-content: center;
     align-items: center;
@@ -566,4 +566,95 @@ button:hover {
     background: var(--neon-blue);
     color: black;
     box-shadow: 0 0 10px var(--neon-blue);
+}
+
+.clickable {
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.clickable:hover {
+    color: var(--neon-pink);
+    text-shadow: 0 0 10px var(--neon-pink);
+}
+
+.info-icon {
+    font-size: 0.8rem;
+    vertical-align: middle;
+    margin-left: 5px;
+    color: var(--neon-blue);
+    opacity: 0.8;
+}
+
+#wave-info-panel {
+    position: absolute;
+    top: 75px;
+    left: 10px;
+    background: var(--ui-bg);
+    border: 1px solid var(--neon-pink);
+    border-radius: 10px;
+    padding: 15px;
+    pointer-events: auto;
+    box-shadow: 0 0 15px var(--neon-pink);
+    min-width: 250px;
+    z-index: 5000;
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+#wave-info-panel .panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(255, 0, 172, 0.3);
+    margin-bottom: 5px;
+    padding-bottom: 5px;
+}
+
+#wave-info-panel h2 {
+    color: var(--neon-pink);
+    font-size: 0.9rem;
+    margin: 0;
+    text-shadow: 0 0 5px var(--neon-pink);
+}
+
+.close-panel {
+    background: transparent;
+    border: none;
+    color: var(--neon-blue);
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 0.6rem;
+    padding: 0;
+    margin: 0;
+    line-height: 1;
+}
+
+.intel-group {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+}
+
+.intel-group label {
+    color: var(--neon-blue);
+}
+
+.intel-group span {
+    color: white;
+    font-weight: bold;
+}
+
+#intel-special {
+    margin: 0;
+    padding-left: 15px;
+    font-size: 0.7rem;
+    color: #fff;
+    list-style-type: square;
+}
+
+#intel-special li {
+    margin-bottom: 3px;
 }

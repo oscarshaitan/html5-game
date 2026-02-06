@@ -189,6 +189,7 @@
         <a href="#logic">LOGIC</a>
         <a href="#spawning">SPAWNING</a>
         <a href="#ui">UI</a>
+        <a href="#audio">AUDIO</a>
         <a href="#rendering">RENDERING</a>
     </nav>
 
@@ -265,8 +266,29 @@
         <div class="method-name">getRepairCost()</div>
         <div class="desc">Returns the current price for life restoration based on lives exceeding parity.</div>
     </div>
+    <div class="method">
+        <div class="method-name">updateWavePanel()</div>
+        <div class="desc">Calculates incoming wave statistics (enemy count, mutant chance, threat level) and populates
+            the Wave Intelligence modal.</div>
+    </div>
 
-    <h2 id="rendering">05. RENDERING PIPELINE</h2>
+    <h2 id="audio">05. AUDIO ENGINE</h2>
+    <div class="method">
+        <div class="method-name">AudioEngine.updateMusic()</div>
+        <div class="desc">A multi-track sequencer that plays 16-step patterns. Shifts between 'Normal' and 'Threat'
+            themes based on enemy presence.</div>
+    </div>
+    <div class="method">
+        <div class="method-name">AudioEngine.playArp(freq, type, vol, duration)</div>
+        <div class="desc">Generates a rapid arpeggiated sequence (8-bit style) used for high-threat melodies.</div>
+    </div>
+    <div class="method">
+        <div class="method-name">AudioEngine.setVolume(type, val)</div>
+        <div class="desc">Adjusts gain nodes for 'music' or 'sfx' and persists settings to <code>localStorage</code>.
+        </div>
+    </div>
+
+    <h2 id="rendering">06. RENDERING PIPELINE</h2>
     <div class="method">
         <div class="method-name">draw()</div>
         <div class="desc">Total canvas redraw. Applies camera transforms (pan/zoom) before drawing entities.</div>
