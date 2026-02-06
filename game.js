@@ -60,6 +60,13 @@ let frameCount = 0;
 
 let isPaused = false;
 
+// --- Base State ---
+let baseLevel = 0; // 0 = No turret, 1+ = Turret active
+let baseCooldown = 0;
+let baseRange = 150;
+let baseDamage = 20;
+let selectedBase = false; // Selection state
+
 // --- Initialization ---
 window.onload = () => {
     canvas = document.getElementById('gameCanvas');
@@ -90,6 +97,13 @@ window.onload = () => {
             case 'q': selectTower('basic'); break;
             case 'w': selectTower('rapid'); break;
             case 'e': selectTower('sniper'); break;
+            case 'u':
+                if (selectedPlacedTower) upgradeTower();
+                break;
+            case 'backspace':
+            case 'delete':
+                if (selectedPlacedTower) sellTower();
+                break;
             case 'escape':
                 if (selectedPlacedTower) deselectTower();
                 else togglePause();
@@ -235,6 +249,18 @@ function handleClick() {
         return;
     }
 
+    // Check interaction with BASE (Center)
+    // Base is at center
+    const cols = Math.floor(width / GRID_SIZE);
+    const rows = Math.floor(height / GRID_SIZE);
+    const baseX = Math.floor(cols / 2) * GRID_SIZE + GRID_SIZE / 2;
+    const baseY = Math.floor(rows / 2) * GRID_SIZE + GRID_SIZE / 2;
+
+    if (Math.hypot(mouseX - baseX, mouseY - baseY) < 30) {
+        selectBase();
+        return;
+    }
+
     // If not clicking a tower, attempt to BUILD if one is selected
     if (selectedTowerType) {
         buildTower(mouseX, mouseY);
@@ -244,6 +270,39 @@ function handleClick() {
     // If clicking on empty space (no tower, no build), deselect
     deselectTower();
 }
+
+function selectBase() {
+    selectedBase = true;
+    selectedPlacedTower = null;
+    selectedTowerType = null;
+    document.querySelectorAll('.tower-selector').forEach(el => el.classList.remove('selected'));
+
+    updateSelectionUI();
+}
+
+// Global functions for Base UI
+window.repairBase = function () {
+    if (money >= 50) {
+        money -= 50;
+        lives++;
+        createParticles(width / 2, height / 2, '#00ff41', 20); // Green heal
+        updateUI();
+        updateSelectionUI(); // Update buttons just in case
+    }
+};
+
+window.upgradeBase = function () {
+    // Cost: 200 * (level + 1)
+    const cost = 200 * (baseLevel + 1);
+
+    if (money >= cost && baseLevel < 3) {
+        money -= cost;
+        baseLevel++;
+        createParticles(width / 2, height / 2, '#00f3ff', 30); // Blue upgrade
+        updateUI();
+        updateSelectionUI();
+    }
+};
 
 function resize() {
     width = canvas.width = window.innerWidth;
@@ -357,9 +416,10 @@ window.saveGame = function () {
         money, lives, wave, isWaveActive, prepTimer, spawnQueue, paths,
         towers: towers.map(t => ({
             type: t.type, x: t.x, y: t.y, level: t.level,
-            damage: t.damage, range: t.range, cooldown: t.cooldown,
+            damage: t.damage, range: t.range, cooldown: t.cooldown, maxCooldown: t.maxCooldown, // Save maxCooldown
             color: t.color, cost: t.cost, totalCost: t.totalCost
-        }))
+        })),
+        baseLevel, baseCooldown // Save base state
     };
 
     localStorage.setItem('neonDefenseSave', JSON.stringify(data));
@@ -381,11 +441,14 @@ window.loadGame = function () {
     prepTimer = data.prepTimer;
     spawnQueue = data.spawnQueue || []; // Load queue
     paths = data.paths || paths; // Load paths or keep default if missing (backward compatibility)
+    baseLevel = data.baseLevel || 0; // Load base level
+    baseCooldown = data.baseCooldown || 0; // Load base cooldown
 
     // Restore towers
     towers = data.towers.map(t => ({
         ...t,
-        lastShot: 0
+        cooldown: t.cooldown || 0, // Ensure cooldown is set
+        maxCooldown: t.maxCooldown || t.cooldown // Ensure maxCooldown is set, fallback to current cooldown if not saved
     }));
 
     // Reset transient state
@@ -394,6 +457,7 @@ window.loadGame = function () {
     particles = [];
     selectedPlacedTower = null;
     selectedTowerType = null;
+    selectedBase = false; // Ensure base is not selected on load
 
     document.getElementById('start-screen').classList.add('hidden');
     gameState = 'playing';
@@ -417,8 +481,10 @@ function resetGameLogic() {
     money = 100;
     lives = 20;
     wave = 1;
+    baseLevel = 0; // Reset base
     towers = [];
     selectedPlacedTower = null;
+    selectedBase = false;
     selectedTowerType = 'basic'; // Reset to build mode by default
     document.getElementById('selection-panel').classList.add('hidden');
     selectTower('basic');
@@ -441,6 +507,13 @@ function startPrepPhase() {
     // UI Updates
     document.getElementById('skip-btn').style.display = 'block';
     document.getElementById('wave-display').innerText = wave; // Show incoming wave number
+
+    // New Path Every 10 Waves (After Boss Loop)
+    // Happens during PREP phase logic now
+    // Boss spawns at 10, 20, 30... so new path spawn at 11, 21, 31...
+    if (wave > 1 && (wave - 1) % 10 === 0) {
+        generateNewPath();
+    }
 }
 
 window.skipPrep = function () {
@@ -491,10 +564,7 @@ function startWave() {
         spawnQueue.splice(randomIndex, 0, 'boss');
     }
 
-    // Dynamic Path Generation (After Wave 10)
-    if (wave > 10 && Math.random() < 0.5) {
-        generateNewPath();
-    }
+
 
     // Sort queue slightly so tanks come last (harder)
     // spawnQueue.sort((a,b) => (a === 'tank' ? 1 : -1)); 
@@ -503,42 +573,114 @@ function startWave() {
 }
 
 function generateNewPath() {
-    // Attempt to generate a new path from a random edge point to an existing path point
+    // Generate an INDEPENDENT path to the base
 
-    // 1. Pick Start (Top, Left, Right edges)
-    const side = Math.floor(Math.random() * 3); // 0: Top, 1: Left, 2: Right
-    let startNode;
     const cols = Math.floor(width / GRID_SIZE);
     const rows = Math.floor(height / GRID_SIZE);
 
-    if (side === 0) startNode = { c: Math.floor(Math.random() * cols), r: 0 };
-    else if (side === 1) startNode = { c: 0, r: Math.floor(Math.random() * rows) };
-    else startNode = { c: cols - 1, r: Math.floor(Math.random() * rows) };
+    // Target: Center (Base)
+    const centerC = Math.floor(cols / 2);
+    const centerR = Math.floor(rows / 2);
+    const endNode = { c: centerC, r: centerR }; // Always path to center
 
-    // 2. Pick End (Any point on the MAIN path, preferably later half)
-    if (paths.length === 0) return;
-    const mainPath = paths[0];
-
-    // Target somewhere in the second half of the main path to ensure it flows towards base
-    const targetWaypoint = mainPath[Math.floor(mainPath.length / 2) + Math.floor(Math.random() * (mainPath.length / 2))];
-    const endNode = {
-        c: Math.floor(targetWaypoint.x / GRID_SIZE),
-        r: Math.floor(targetWaypoint.y / GRID_SIZE)
+    // Helper to check if grid cell is occupied by any existing path
+    const isLocationOnPath = (c, r) => {
+        for (const path of paths) {
+            for (const p of path) {
+                const pc = Math.floor(p.x / GRID_SIZE);
+                const pr = Math.floor(p.y / GRID_SIZE);
+                if (pc === c && pr === r) return true;
+            }
+        }
+        return false;
     };
 
-    // 3. BFS using helper
-    const newPathPoints = findPathOnGrid(startNode, endNode, towers);
+    // 1. Pick Valid Start
+    let startNode = null;
+    let attempts = 0;
+
+    while (!startNode && attempts < 200) {
+        const c = Math.floor(Math.random() * cols);
+        const r = Math.floor(Math.random() * rows);
+
+        // Check 1: Distance >= 10 from base
+        const dist = Math.hypot(c - centerC, r - centerR);
+
+        // Check 2: Not on existing path
+        if (dist >= 10 && !isLocationOnPath(c, r)) {
+            startNode = { c: c, r: r };
+        }
+        attempts++;
+    }
+
+    if (!startNode) {
+        console.warn("Could not find valid spawn location for new path.");
+        return;
+    }
+
+    // 3. BFS - IGNORE TOWERS (Pass empty list)
+    // Destructive pathing: The path overrides any towers
+    const newPathPoints = findPathOnGrid(startNode, endNode, []);
 
     if (newPathPoints) {
-        // Append the rest of the main path from the connection point
-        const idx = mainPath.indexOf(targetWaypoint);
-        if (idx !== -1) {
-            for (let i = idx + 1; i < mainPath.length; i++) {
-                newPathPoints.push(mainPath[i]);
+        // No merging logic anymore - path goes all the way to base
+        paths.push(newPathPoints);
+
+        // DESTROY TOWERS ON PATH
+        // Check for collisions and sell
+        // We iterate backwards to safely remove from array
+        for (let i = towers.length - 1; i >= 0; i--) {
+            const t = towers[i];
+            const tolerance = GRID_SIZE / 2;
+            let hit = false;
+
+            // Generate grid coords for new path for reliable overlap check?
+            // Or use existing segment overlap logic.
+            // Existing segment logic works fine for grid alignment.
+
+            for (let j = 0; j < newPathPoints.length - 1; j++) {
+                const p1 = newPathPoints[j];
+                const p2 = newPathPoints[j + 1];
+                // Horizontal segment
+                if (Math.abs(p1.y - p2.y) < 1) {
+                    if (Math.abs(t.y - p1.y) < tolerance &&
+                        t.x >= Math.min(p1.x, p2.x) - tolerance &&
+                        t.x <= Math.max(p1.x, p2.x) + tolerance) {
+                        hit = true;
+                        break;
+                    }
+                }
+                // Vertical segment
+                else {
+                    if (Math.abs(t.x - p1.x) < tolerance &&
+                        t.y >= Math.min(p1.y, p2.y) - tolerance &&
+                        t.y <= Math.max(p1.y, p2.y) + tolerance) {
+                        hit = true;
+                        break;
+                    }
+                }
+            }
+
+            if (hit) {
+                // Sell logic (manual call to avoid UI dep or just direct removal)
+                // Refund 70%
+                money += Math.floor(t.totalCost || t.cost * 0.7); // Use totalCost if tracked, else estimate
+                // Actually upgrade logic didn't track totalCost, just level.
+                // Let's just do cost * level * 0.7 approx
+                // towers have 'cost' (base cost).
+                // upgrade cost is cost * 1.5 * (level-1) sum? 
+                // Let's just refund current value logic: (cost * 0.7) * level for simplicity
+
+                money += Math.floor((t.cost * t.level) * 0.2); // Bonus refund for upgrades? 
+                // Actually let's just use the sellTower calculation if we can
+                // const refund = Math.floor(t.cost * 0.7); -> This is base cost only.
+
+                createParticles(t.x, t.y, '#fff', 10); // Explosion effect
+                towers.splice(i, 1);
             }
         }
 
-        paths.push(newPathPoints);
+        updateUI();
     }
 }
 
@@ -611,8 +753,7 @@ function findPathOnGrid(startNode, endNode, currentTowers) {
 window.selectTower = function (type) {
     selectedTowerType = type;
     selectedPlacedTower = null; // Deselect existing tower
-    document.getElementById('selection-panel').classList.add('hidden');
-
+    selectedBase = false;
     document.querySelectorAll('.tower-selector').forEach(el => el.classList.remove('selected'));
     document.querySelector(`.tower-selector[data-type="${type}"]`).classList.add('selected');
 };
@@ -620,12 +761,14 @@ window.selectTower = function (type) {
 function selectPlacedTower(tower) {
     selectedPlacedTower = tower;
     selectedTowerType = null; // Disable placement mode
+    selectedBase = false;
     document.querySelectorAll('.tower-selector').forEach(el => el.classList.remove('selected'));
     updateSelectionUI();
 }
 
 window.deselectTower = function () {
     selectedPlacedTower = null;
+    selectedBase = false;
     document.getElementById('selection-panel').classList.add('hidden');
 };
 
@@ -670,10 +813,58 @@ function getUpgradeCost(tower) {
 }
 
 function updateSelectionUI() {
-    if (!selectedPlacedTower) {
-        document.getElementById('selection-panel').classList.add('hidden');
+    const panel = document.getElementById('selection-panel');
+
+    if (selectedBase) {
+        panel.classList.remove('hidden');
+        panel.innerHTML = `
+            <h3>CORE BASE</h3>
+            <div style="margin-bottom: 8px; font-size: 0.9rem; color: #aaa;">The Heart of Defense</div>
+            <div class="stats">Level: <span class="highlight">${baseLevel}/3</span></div>
+            ${baseLevel > 0 ? `<div class="stat-row"><span>Damage</span> <span>${baseDamage + (baseLevel - 1) * 10}</span></div>` : ''}
+            
+            <hr style="border: 0; border-top: 1px solid #444; margin: 10px 0;">
+            
+            <!-- Repair -->
+            <button onclick="repairBase()" class="action-btn" style="background: rgba(0, 255, 65, 0.2); border: 1px solid #00ff41; color: #00ff41; width: 100%; margin-bottom: 5px;">
+                REPAIR (+1 Life) <span style="float:right;">$50</span>
+            </button>
+            
+            <!-- Upgrade -->
+            ${baseLevel < 3 ? `
+            <button onclick="upgradeBase()" class="action-btn" style="background: rgba(0, 243, 255, 0.2); border: 1px solid #00f3ff; color: #00f3ff; width: 100%;">
+                ${baseLevel === 0 ? 'INSTALL TURRET' : 'UPGRADE TURRET'} <span style="float:right;">$${200 * (baseLevel + 1)}</span>
+            </button>
+            ` : '<div style="color: #666; text-align: center; margin-top: 5px;">MAX LEVEL</div>'}
+        `;
+
+        // Position panel near base (center)
+        // Convert world center to screen
+        const cols = Math.floor(width / GRID_SIZE);
+        const rows = Math.floor(height / GRID_SIZE);
+        const baseX = Math.floor(cols / 2) * GRID_SIZE + GRID_SIZE / 2;
+        const baseY = Math.floor(rows / 2) * GRID_SIZE + GRID_SIZE / 2;
+
+        // Manual "worldToScreen" inverse of screenToWorld basically
+        // screenX = worldX * zoom + cameraX
+        const screenPos = {
+            x: baseX * camera.zoom + camera.x,
+            y: baseY * camera.zoom + camera.y
+        };
+
+        panel.style.left = Math.min(window.innerWidth - 220, Math.max(20, screenPos.x + 50)) + 'px';
+        panel.style.top = Math.min(window.innerHeight - 300, Math.max(20, screenPos.y - 100)) + 'px';
+        panel.style.bottom = 'auto'; // Release fixed bottom
+
         return;
     }
+
+    if (!selectedPlacedTower) {
+        panel.classList.add('hidden');
+        return;
+    }
+
+    // ... Existing Tower UI logic ...
     const t = selectedPlacedTower;
 
     document.getElementById('sel-type').innerText = `Type: ${t.type.toUpperCase()}`;
@@ -684,7 +875,6 @@ function updateSelectionUI() {
     document.getElementById('upgrade-cost').innerText = `($${getUpgradeCost(t)})`;
     document.getElementById('sell-refund').innerText = `($${Math.floor(t.totalCost * 0.7)})`;
 
-    const panel = document.getElementById('selection-panel');
     panel.classList.remove('hidden');
 
     // Fixed positioning handled by CSS now
@@ -766,7 +956,8 @@ function buildTower(worldX, worldY) {
             ...towerConfig,
             level: 1,
             totalCost: towerConfig.cost,
-            lastShot: 0
+            cooldown: 0, // Current cooldown
+            maxCooldown: towerConfig.cooldown // Store original cooldown as max
         });
 
         createParticles(validation.snap.x, validation.snap.y, towerConfig.color, 10);
@@ -892,29 +1083,70 @@ function updateEnemies() {
 }
 
 function updateTowers() {
+    // Update Towers
     for (let t of towers) {
-        t.lastShot++;
-        if (t.lastShot >= t.cooldown) {
-            // Find target
-            // Simple: First enemy in range
-            let target = null;
-            let maxDist = -1; // or closest to end? let's do closest to tower for now for simplicity or 'first'
+        if (t.cooldown > 0) t.cooldown--;
 
-            // find 'first' enemy in range (closest to finishing path usually means highest pathIndex)
-            // A better heuristic is distance traveled, but let's stick to simple range check
+        // Find Target
+        // Simple: closest enemy in range
+        const range = t.range;
+        let target = null;
+        let minDist = Infinity;
 
-            for (let e of enemies) {
-                const dist = Math.hypot(e.x - t.x, e.y - t.y);
-                if (dist <= t.range) {
-                    target = e;
-                    break; // Target first found
-                }
+        for (let e of enemies) {
+            const dist = Math.hypot(e.x - t.x, e.y - t.y);
+            if (dist <= range && dist < minDist) {
+                target = e;
+                minDist = dist;
             }
+        }
 
-            if (target) {
-                shoot(t, target);
-                t.lastShot = 0;
+        if (target && t.cooldown <= 0) {
+            shoot(t, target);
+            t.cooldown = t.maxCooldown;
+        }
+    }
+
+    // Base Turret Logic
+    if (baseLevel > 0) {
+        const cols = Math.floor(width / GRID_SIZE);
+        const rows = Math.floor(height / GRID_SIZE);
+        const baseX = Math.floor(cols / 2) * GRID_SIZE + GRID_SIZE / 2;
+        const baseY = Math.floor(rows / 2) * GRID_SIZE + GRID_SIZE / 2;
+
+        if (baseCooldown > 0) baseCooldown--;
+
+        // Find target for base
+        let target = null;
+        let minDist = Infinity;
+        // Base range increases with level: 150, 180, 210
+        const currentBaseRange = baseRange + (baseLevel - 1) * 30;
+
+        for (let e of enemies) {
+            const dist = Math.hypot(e.x - baseX, e.y - baseY);
+            if (dist <= currentBaseRange && dist < minDist) {
+                target = e;
+                minDist = dist;
             }
+        }
+
+        if (target && baseCooldown <= 0) {
+            // Shoot
+            // Damage increases with level: 20, 30, 40
+            const currentDamage = baseDamage + (baseLevel - 1) * 10;
+            // Cooldown decreases: 30, 25, 20
+            const currentCooldown = Math.max(10, 35 - baseLevel * 5);
+
+            projectiles.push({
+                x: baseX,
+                y: baseY,
+                target: target,
+                speed: 12,
+                damage: currentDamage,
+                color: '#00ff41',
+                type: 'base' // Special projectile
+            });
+            baseCooldown = currentCooldown;
         }
     }
 }
@@ -1108,7 +1340,30 @@ function draw() {
     }
 
     // Draw Base (Core) - using end of first path (assume all lead to base)
-    const base = paths[0][paths[0].length - 1];
+    const base = paths[0][paths[0].length - 1]; // This should be safe now with center logic
+
+    // Selection Ring for Base
+    if (selectedBase) {
+        ctx.beginPath();
+        ctx.arc(base.x, base.y, 40, 0, Math.PI * 2);
+        ctx.strokeStyle = '#00ff41';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 5]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Range indicator if upgraded
+        if (baseLevel > 0) {
+            const currentRange = baseRange + (baseLevel - 1) * 30;
+            ctx.beginPath();
+            ctx.arc(base.x, base.y, currentRange, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(0, 255, 65, 0.1)';
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(0, 255, 65, 0.3)';
+            ctx.stroke();
+        }
+    }
+
     ctx.shadowBlur = 20;
     ctx.shadowColor = '#00ff41'; // Green glow
     ctx.fillStyle = '#00ff41';   // Green core
@@ -1120,6 +1375,23 @@ function draw() {
     ctx.lineTo(base.x, base.y + 18); // Bottom
     ctx.lineTo(base.x - 18, base.y); // Left
     ctx.fill();
+
+    // Base Turret Visuals (if level > 0)
+    if (baseLevel > 0) {
+        ctx.fillStyle = '#fff';
+        // Orbiting satellites?
+        const count = baseLevel;
+        const time = Date.now() / 500;
+        for (let i = 0; i < count; i++) {
+            const angle = time + (i * (Math.PI * 2 / count));
+            const ox = base.x + Math.cos(angle) * 25;
+            const oy = base.y + Math.sin(angle) * 25;
+
+            ctx.beginPath();
+            ctx.arc(ox, oy, 4, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
 
     // Core pulsing effect
     ctx.fillStyle = '#fff';
