@@ -143,6 +143,30 @@ canvas {
     height: 16px;
 }
 
+.icon-splitter {
+    color: #00ff41;
+    clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
+}
+
+.icon-mini {
+    color: #00ff41;
+    border-radius: 50%;
+    transform: scale(0.6);
+}
+
+.icon-healer {
+    color: #00ff41;
+    border-radius: 50%;
+    border: 2px double currentColor;
+    background: transparent !important;
+}
+
+.icon-shifter {
+    color: #ff00ac;
+    border-radius: 50%;
+    opacity: 0.5;
+}
+
 .icon-mutant {
     border-color: #fff;
     background: #fff;

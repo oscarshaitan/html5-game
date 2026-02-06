@@ -16,7 +16,11 @@ const ENEMIES = {
     basic: { hp: 30, speed: 1.5, color: '#ff0000', reward: 10, width: 20 },
     fast: { hp: 20, speed: 2.5, color: '#ffff00', reward: 15, width: 16 },
     tank: { hp: 100, speed: 0.8, color: '#ff00ff', reward: 30, width: 24 },
-    boss: { hp: 500, speed: 0.5, color: '#ff8800', reward: 200, width: 40 }
+    boss: { hp: 500, speed: 0.5, color: '#ff8800', reward: 200, width: 40 },
+    splitter: { hp: 80, speed: 1.2, color: '#00ff41', reward: 40, width: 28, type: 'splitter' },
+    mini: { hp: 20, speed: 2.0, color: '#00ff41', reward: 5, width: 12, type: 'mini' },
+    healer: { hp: 120, speed: 0.7, color: '#00ff41', reward: 50, width: 28, type: 'healer' },
+    shifter: { hp: 60, speed: 1.5, color: '#ff00ac', reward: 60, width: 20, type: 'shifter' }
 };
 
 // --- Game State ---
@@ -1068,8 +1072,12 @@ function startWave() {
             else if (r < 0.25) type = 'tank';
             else type = 'basic';
         } else {
-            if (r < 0.3) type = 'fast';
-            else if (r < 0.5) type = 'tank';
+            const chance = Math.random();
+            if (chance < 0.08 && wave >= 30) type = 'shifter';
+            else if (chance < 0.15 && wave >= 20) type = 'healer';
+            else if (chance < 0.30 && wave >= 15) type = 'splitter';
+            else if (chance < 0.50) type = 'fast';
+            else if (chance < 0.70) type = 'tank';
             else type = 'basic';
         }
         spawnQueue.push(type);
@@ -1762,6 +1770,24 @@ function updateEnemies() {
             e.x += (dx / dist) * e.speed;
             e.y += (dy / dist) * e.speed;
         }
+
+        // --- Healer Logic ---
+        if (e.type === 'healer' && frameCount % 120 === 0) { // Heal every 2 secs
+            createParticles(e.x, e.y, '#00ff41', 5); // Visual cue
+            enemies.forEach(other => {
+                if (other !== e && Math.hypot(other.x - e.x, other.y - e.y) < 100) {
+                    const healAmt = other.maxHp * 0.15;
+                    other.hp = Math.min(other.maxHp, other.hp + healAmt);
+                    if (frameCount % 10 === 0) createParticles(other.x, other.y, '#ffffff', 2);
+                }
+            });
+        }
+
+        // --- Phase Shifter Logic ---
+        if (e.type === 'shifter') {
+            // Toggle invisibility every 180 frames (~3 secs)
+            e.isInvisible = (frameCount % 360) > 180;
+        }
     }
 }
 
@@ -1785,6 +1811,7 @@ function updateTowers() {
         let minDist = Infinity;
 
         for (let e of enemies) {
+            if (e.isInvisible) continue; // Ignore stealth units
             const dist = Math.hypot(e.x - t.x, e.y - t.y);
             if (dist <= range && dist < minDist) {
                 target = e;
@@ -1895,6 +1922,12 @@ function hitEnemy(enemy, damage) {
 
             createParticles(enemy.x, enemy.y, enemy.color, 8);
             AudioEngine.playSFX('explosion');
+
+            // Splitter Logic
+            if (enemy.type === 'splitter') {
+                spawnSubUnits(enemy);
+            }
+
             updateUI();
             saveGame(); // Save on energy gain
         }
@@ -1933,7 +1966,7 @@ function updateUI() {
     let typeText = '';
 
     if (isWaveActive && count > 0) {
-        const counts = { BASIC: 0, FAST: 0, TANK: 0, BOSS: 0, MUTANT: 0 };
+        const counts = { BASIC: 0, FAST: 0, TANK: 0, BOSS: 0, MUTANT: 0, SPLITTER: 0, MINI: 0, HEALER: 0, SHIFTER: 0 };
 
         // Count queue
         for (const t of spawnQueue) {
@@ -1950,11 +1983,15 @@ function updateUI() {
         }
 
         let html = '';
-        if (counts['BASIC']) html += `<div class="enemy-count-group"><div class="enemy-icon-small icon-basic"></div>${counts['BASIC']}</div>`;
-        if (counts['FAST']) html += `<div class="enemy-count-group"><div class="enemy-icon-small icon-fast"></div>${counts['FAST']}</div>`;
-        if (counts['TANK']) html += `<div class="enemy-count-group"><div class="enemy-icon-small icon-tank"></div>${counts['TANK']}</div>`;
-        if (counts['BOSS']) html += `<div class="enemy-count-group"><div class="enemy-icon-small icon-boss"></div>${counts['BOSS']}</div>`;
-        if (counts['MUTANT']) html += `<div class="enemy-count-group"><div class="enemy-icon-small icon-mutant"></div>${counts['MUTANT']}</div>`;
+        if (counts['BASIC']) html += `<div class="enemy-count-group" title="Basic"><div class="enemy-icon-small icon-basic"></div>${counts['BASIC']}</div>`;
+        if (counts['FAST']) html += `<div class="enemy-count-group" title="Fast"><div class="enemy-icon-small icon-fast"></div>${counts['FAST']}</div>`;
+        if (counts['TANK']) html += `<div class="enemy-count-group" title="Tank"><div class="enemy-icon-small icon-tank"></div>${counts['TANK']}</div>`;
+        if (counts['SPLITTER']) html += `<div class="enemy-count-group" title="Splitter"><div class="enemy-icon-small icon-splitter"></div>${counts['SPLITTER']}</div>`;
+        if (counts['MINI']) html += `<div class="enemy-count-group" title="Mini"><div class="enemy-icon-small icon-mini"></div>${counts['MINI']}</div>`;
+        if (counts['HEALER']) html += `<div class="enemy-count-group" title="Healer"><div class="enemy-icon-small icon-healer"></div>${counts['HEALER']}</div>`;
+        if (counts['SHIFTER']) html += `<div class="enemy-count-group" title="Shifter"><div class="enemy-icon-small icon-shifter"></div>${counts['SHIFTER']}</div>`;
+        if (counts['BOSS']) html += `<div class="enemy-count-group" title="Boss"><div class="enemy-icon-small icon-boss"></div>${counts['BOSS']}</div>`;
+        if (counts['MUTANT']) html += `<div class="enemy-count-group" title="Mutant"><div class="enemy-icon-small icon-mutant"></div>${counts['MUTANT']}</div>`;
 
         document.getElementById('enemy-info').innerHTML = html;
     } else {
@@ -2087,12 +2124,9 @@ function draw() {
         ctx.arc(spawn.x, spawn.y, 10, 0, Math.PI * 2);
         ctx.fill();
 
-        // Level text
+        // Level Pips (Aligned with Tower system)
         if (riftLevel > 1) {
-            ctx.fillStyle = '#fff';
-            ctx.font = 'bold 12px Orbitron';
-            ctx.textAlign = 'center';
-            ctx.fillText(`T${riftLevel}`, spawn.x, spawn.y + 4);
+            drawLevelPips(riftLevel, spawn.x, spawn.y + 30);
         }
 
         // Mutation Tag
@@ -2204,7 +2238,7 @@ function draw() {
         drawTowerOne(t.type, t.x, t.y, t.color);
         // Draw Level Pips
         if (t.level > 1) {
-            drawLevelPips(t);
+            drawLevelPips(t.level, t.x, t.y + 20);
         }
     }
 
@@ -2222,6 +2256,14 @@ function draw() {
 
     // Draw Enemies
     for (let e of enemies) {
+        ctx.save();
+
+        let alpha = 1.0;
+        if (e.type === 'shifter' && e.isInvisible) {
+            alpha = 0.2; // Very transparent
+        }
+        ctx.globalAlpha = alpha;
+
         ctx.fillStyle = e.color;
         ctx.shadowBlur = 10;
         ctx.shadowColor = e.color;
@@ -2242,11 +2284,34 @@ function draw() {
             for (let i = 1; i <= 6; i++) {
                 ctx.lineTo(e.x + size * Math.cos(i * 2 * Math.PI / 6), e.y + size * Math.sin(i * 2 * Math.PI / 6));
             }
+        } else if (e.type === 'healer') {
+            // Circle with a pulsing outer ring
+            ctx.arc(e.x, e.y, 14, 0, Math.PI * 2);
+            ctx.fill();
+            if (frameCount % 60 < 20) {
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(e.x, e.y, 18, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+        } else if (e.type === 'splitter') {
+            // Triangle with a "cluster" look
+            ctx.moveTo(e.x, e.y - 14);
+            ctx.lineTo(e.x + 12, e.y + 10);
+            ctx.lineTo(e.x - 12, e.y + 10);
+            ctx.closePath();
+        } else if (e.type === 'mini') {
+            // Small fast dot
+            ctx.arc(e.x, e.y, 6, 0, Math.PI * 2);
         } else {
             // Basic
             ctx.arc(e.x, e.y, e.width ? e.width / 2 : 10, 0, Math.PI * 2);
         }
         ctx.fill();
+
+        // Restore context to reset alpha for health bar etc.
+        ctx.globalAlpha = 1.0;
 
         // Elite Visuals (Veteran Rifts)
         if (e.riftLevel > 1) {
@@ -2272,6 +2337,8 @@ function draw() {
         ctx.fillRect(e.x - 10, e.y - 15, 20, 3);
         ctx.fillStyle = '#0f0';
         ctx.fillRect(e.x - 10, e.y - 15, 20 * hpPct, 3);
+
+        ctx.restore();
     }
 
     // Draw Projectiles
@@ -2433,8 +2500,7 @@ function drawTowerOne(type, x, y, color) {
     ctx.fill();
 }
 
-function drawLevelPips(t) {
-    const level = t.level;
+function drawLevelPips(level, x, y) {
     const fives = Math.floor(level / 5);
     const ones = level % 5;
 
@@ -2457,8 +2523,8 @@ function drawLevelPips(t) {
         totalW += (totalItems - 1) * gap;
     }
 
-    let currentX = t.x - totalW / 2;
-    const y = t.y + 20;
+    let currentX = x - totalW / 2;
+    const posY = y;
 
     // Draw Fives (Diamonds)
     for (let i = 0; i < fives; i++) {
