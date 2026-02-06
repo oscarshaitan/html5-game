@@ -58,6 +58,13 @@ let isHovering = false;
 let isWaveActive = false;
 let prepTimer = 30; // seconds
 let frameCount = 0;
+let energy = 0;
+let maxEnergy = 100;
+let targetingAbility = null; // 'emp' or null
+let abilities = {
+    emp: { cost: 40, radius: 120, duration: 5 * 60, cooldown: 0, maxCooldown: 15 }, // duration in frames
+    overclock: { cost: 25, duration: 10 * 60, cooldown: 0, maxCooldown: 10 } // duration in frames
+};
 
 
 let isPaused = false;
@@ -439,6 +446,12 @@ function setupInput() {
             isHovering = false; // sticky hover on touch is annoying
         }
     });
+
+    // Keydown for hotkeys
+    window.addEventListener('keydown', (e) => {
+        if (e.key === '1') activateAbility('emp');
+        if (e.key === '2') activateAbility('overclock');
+    });
 }
 
 function screenToWorld(screenX, screenY) {
@@ -450,6 +463,31 @@ function screenToWorld(screenX, screenY) {
 
 function handleClick() {
     if (gameState !== 'playing' || isPaused) return;
+
+    // --- Ability Targeting Integration ---
+    if (targetingAbility) {
+        if (targetingAbility === 'overclock') {
+            // Must target a tower
+            let targetTower = null;
+            for (let t of towers) {
+                if (Math.hypot(t.x - mouseX, t.y - mouseY) < 20) {
+                    targetTower = t;
+                    break;
+                }
+            }
+            if (targetTower) {
+                useAbility('overclock', targetTower);
+                return;
+            }
+        } else if (targetingAbility === 'emp') {
+            // Target ground
+            useAbility('emp', { x: mouseX, y: mouseY });
+            return;
+        }
+        // If we clicked empty space while targeting, we don't necessarily want to cancel immediately?
+        // Actually, let's treat it as a cancel if they clicked far away or just keep targeting.
+        // For now, let's allow "right-click to cancel" logic in input setup, and keep targeting here.
+    }
 
     // Check interaction with towers
     // Check if clicked ON a placed tower to select it
@@ -485,7 +523,6 @@ function handleClick() {
     }
 
     // Check interaction with BASE (Center)
-    // Base is at center
     const cols = Math.floor(width / GRID_SIZE);
     const rows = Math.floor(height / GRID_SIZE);
     const baseX = Math.floor(cols / 2) * GRID_SIZE + GRID_SIZE / 2;
@@ -523,6 +560,16 @@ function selectRift(rift) {
     selectedBase = false;
     selectedTowerType = null;
     document.querySelectorAll('.tower-selector').forEach(el => el.classList.remove('selected'));
+    updateSelectionUI();
+}
+
+function deselectTower() {
+    selectedTowerType = null;
+    selectedPlacedTower = null;
+    selectedBase = false;
+    selectedRift = null;
+    targetingAbility = null; // Clear ability targeting
+    updateUI();
     updateSelectionUI();
 }
 
@@ -666,18 +713,76 @@ window.fullReset = function () {
     location.reload();
 };
 
-window.togglePause = function () {
-    AudioEngine.init();
-    if (gameState !== 'playing') return;
+function togglePause() {
     isPaused = !isPaused;
-
-    const menu = document.getElementById('pause-menu');
     if (isPaused) {
-        menu.classList.remove('hidden');
+        document.getElementById('pause-menu').classList.remove('hidden');
     } else {
-        menu.classList.add('hidden');
+        document.getElementById('pause-menu').classList.add('hidden');
     }
-};
+}
+
+// --- Ability System Functions ---
+
+function activateAbility(type) {
+    if (gameState !== 'playing' || isPaused) return;
+    const ability = abilities[type];
+
+    // Check energy and cooldown
+    if (energy < ability.cost || ability.cooldown > 0) {
+        AudioEngine.playSFX('error'); // Need to ensure error SFX exists or handle gracefully
+        return;
+    }
+
+    // Toggle targeting
+    if (targetingAbility === type) {
+        targetingAbility = null;
+    } else {
+        targetingAbility = type;
+        selectedTowerType = null; // Deselect ghost tower
+        selectedPlacedTower = null;
+        selectedBase = false;
+        selectedRift = null;
+    }
+    updateUI();
+}
+
+function useAbility(type, target) {
+    const ability = abilities[type];
+    if (energy < ability.cost) return;
+
+    energy -= ability.cost;
+    targetingAbility = null;
+    ability.cooldown = ability.maxCooldown;
+
+    if (type === 'emp') {
+        // EMP Blast at target {x, y}
+        createParticles(target.x, target.y, '#00f3ff', 20);
+        AudioEngine.playSFX('explosion'); // maybe a 'zap' sfx later
+
+        // Freeze enemies in radius
+        enemies.forEach(e => {
+            const dist = Math.hypot(e.x - target.x, e.y - target.y);
+            if (dist < ability.radius) {
+                e.frozen = true;
+                e.frozenTimer = ability.duration;
+            }
+        });
+    } else if (type === 'overclock') {
+        // Overclock a specific tower
+        createParticles(target.x, target.y, '#fcee0a', 15);
+        AudioEngine.playSFX('repair'); // use repair sfx for buff for now
+
+        target.overclocked = true;
+        target.overclockTimer = ability.duration;
+        // The boost happens in updateTowers
+    }
+
+    updateUI();
+}
+
+window.activateAbility = activateAbility;
+window.togglePause = togglePause; // Expose togglePause globally
 
 window.toggleWavePanel = function () {
     const panel = document.getElementById('wave-info-panel');
@@ -763,8 +868,6 @@ window.setSFXVolume = function (val) {
 };
 
 window.saveGame = function () {
-    if (gameState !== 'playing') return;
-
     // Simple serialization
     const data = {
         money, lives, wave, isWaveActive, prepTimer, spawnQueue, paths,
@@ -773,7 +876,7 @@ window.saveGame = function () {
             damage: t.damage, range: t.range, cooldown: t.cooldown, maxCooldown: t.maxCooldown,
             color: t.color, cost: t.cost, totalCost: t.totalCost
         })),
-        baseLevel, baseCooldown
+        baseLevel, baseCooldown, energy
     };
 
     localStorage.setItem('neonDefenseSave', JSON.stringify(data));
@@ -804,6 +907,7 @@ window.loadGame = function () {
 
     baseLevel = data.baseLevel || 0;
     baseCooldown = data.baseCooldown || 0;
+    energy = data.energy || 0;
 
     // Restore towers
     towers = data.towers.map(t => ({
@@ -846,11 +950,21 @@ function resetGameLogic() {
     money = 100;
     lives = 20;
     wave = 1;
+    energy = 0; // Reset Energy
+    isWaveActive = false;
+    prepTimer = 30;
+    frameCount = 0;
+    targetingAbility = null;
+
+    // Reset ability cooldowns
+    for (let k in abilities) abilities[k].cooldown = 0;
+
     baseLevel = 0; // Reset base
     towers = [];
+    selectedTowerType = 'basic';
     selectedPlacedTower = null;
     selectedBase = false;
-    selectedTowerType = 'basic'; // Reset to build mode by default
+    selectedRift = null;
     document.getElementById('selection-panel').classList.add('hidden');
     selectTower('basic');
 
@@ -1497,6 +1611,16 @@ function gameLoop(timestamp) {
 function update() {
     frameCount++;
 
+    // --- Ability Cooldown Management ---
+    if (frameCount % 60 === 0) { // Every ~1 sec
+        for (let key in abilities) {
+            if (abilities[key].cooldown > 0) {
+                abilities[key].cooldown--;
+                if (abilities[key].cooldown === 0) updateUI(); // Refresh when CD finishes
+            }
+        }
+    }
+
     // Prep Phase Timer
     if (!isWaveActive) {
         if (frameCount % 60 === 0) { // Approx 1 sec
@@ -1605,6 +1729,15 @@ function updateEnemies() {
     for (let i = enemies.length - 1; i >= 0; i--) {
         let e = enemies[i];
 
+        // Handle Status Effects
+        if (e.frozen) {
+            e.frozenTimer--;
+            if (e.frozenTimer <= 0) e.frozen = false;
+            // Draw frozen particles?
+            if (frameCount % 10 === 0) createParticles(e.x, e.y, '#00f3ff', 1);
+            continue; // Frozen enemies don't move
+        }
+
         // Move towards next waypoint
         const path = e.currentPath || paths[0].points;
         const target = path[e.pathIndex + 1];
@@ -1635,10 +1768,18 @@ function updateEnemies() {
 function updateTowers() {
     // Update Towers
     for (let t of towers) {
-        if (t.cooldown > 0) t.cooldown--;
+        // Handle Cooldown & Overclock
+        let cdRate = 1;
+        if (t.overclocked) {
+            cdRate = 2; // Double fire rate
+            t.overclockTimer--;
+            if (t.overclockTimer <= 0) t.overclocked = false;
+            if (frameCount % 10 === 0) createParticles(t.x, t.y, '#fcee0a', 1);
+        }
+
+        if (t.cooldown > 0) t.cooldown -= cdRate;
 
         // Find Target
-        // Simple: closest enemy in range
         const range = t.range;
         let target = null;
         let minDist = Infinity;
@@ -1741,15 +1882,21 @@ function updateProjectiles() {
 }
 
 function hitEnemy(enemy, damage) {
+    if (enemy.frozen) damage *= 1.2; // Frozen enemies take 20% more damage? Optional buff
     enemy.hp -= damage;
     if (enemy.hp <= 0) {
         const index = enemies.indexOf(enemy);
         if (index > -1) {
             enemies.splice(index, 1);
             money += enemy.reward;
+
+            // Gain Energy
+            energy = Math.min(maxEnergy, energy + 1);
+
             createParticles(enemy.x, enemy.y, enemy.color, 8);
             AudioEngine.playSFX('explosion');
             updateUI();
+            saveGame(); // Save on energy gain
         }
     }
 }
@@ -1826,6 +1973,35 @@ function updateUI() {
     } else {
         timerEl.innerText = `NEXT WAVE: ${prepTimer}s`;
         timerEl.style.color = '#00ff41';
+    }
+
+    // --- Ability UI Synchronization ---
+    const energyFill = document.getElementById('energy-bar-fill');
+    const energyVal = document.getElementById('energy-value');
+    if (energyFill) {
+        energyFill.style.height = `${(energy / maxEnergy) * 100}%`;
+        energyVal.innerText = `${Math.floor(energy)} / ${maxEnergy}`;
+    }
+
+    // Ability Slots
+    for (let key in abilities) {
+        const ability = abilities[key];
+        const btn = document.getElementById(`ability-${key}`);
+        if (btn) {
+            const canAfford = energy >= ability.cost;
+            const reloaded = ability.cooldown <= 0;
+            const isActive = targetingAbility === key;
+
+            btn.classList.toggle('disabled', !canAfford || !reloaded);
+            btn.classList.toggle('active', isActive);
+
+            // Optional: Cooldown overlay text?
+            if (ability.cooldown > 0) {
+                btn.setAttribute('data-cooldown', ability.cooldown);
+            } else {
+                btn.removeAttribute('data-cooldown');
+            }
+        }
     }
 }
 
@@ -2161,6 +2337,68 @@ function draw() {
         ctx.lineWidth = 2;
         ctx.strokeRect(selectedPlacedTower.x - 18, selectedPlacedTower.y - 18, 36, 36);
     }
+
+    // --- Ability Targeting Visuals ---
+    if (targetingAbility === 'emp') {
+        ctx.beginPath();
+        ctx.arc(mouseX, mouseY, abilities.emp.radius, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0, 243, 255, 0.1)';
+        ctx.fill();
+        ctx.strokeStyle = 'var(--neon-blue)';
+        ctx.setLineDash([2, 5]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Target crosshair
+        ctx.beginPath();
+        ctx.moveTo(mouseX - 20, mouseY); ctx.lineTo(mouseX + 20, mouseY);
+        ctx.moveTo(mouseX, mouseY - 20); ctx.lineTo(mouseX, mouseY + 20);
+        ctx.stroke();
+    } else if (targetingAbility === 'overclock') {
+        // Highlighting for tower targeting
+        ctx.strokeStyle = 'var(--neon-yellow)';
+        ctx.setLineDash([5, 2]);
+        ctx.beginPath();
+        ctx.arc(mouseX, mouseY, 30, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+    }
+
+    // --- Entity Status Visuals ---
+    // Frozen pulse on enemies
+    enemies.forEach(e => {
+        if (e.frozen) {
+            ctx.strokeStyle = '#00f3ff';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(e.x, e.y, (e.width / 2) + 2, 0, Math.PI * 2);
+            ctx.stroke();
+            // Frosty overlay
+            ctx.fillStyle = 'rgba(0, 243, 255, 0.3)';
+            ctx.beginPath();
+            ctx.arc(e.x, e.y, e.width / 2, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    });
+
+    // Overclock pulse on towers
+    towers.forEach(t => {
+        if (t.overclocked) {
+            ctx.strokeStyle = '#fcee0a';
+            ctx.lineWidth = 2;
+            const pulse = 1 + Math.sin(frameCount * 0.5) * 0.2;
+            ctx.beginPath();
+            ctx.arc(t.x, t.y, 20 * pulse, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.fillStyle = '#fff';
+            ctx.globalAlpha = 0.3;
+            ctx.beginPath();
+            ctx.arc(t.x, t.y, 18 * pulse, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1.0;
+        }
+    });
 
     ctx.restore(); // Restore from camera transform
 

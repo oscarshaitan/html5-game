@@ -67,6 +67,28 @@
                 <button id="recenter-btn" onclick="resetCamera()" title="Reset Camera">⌖</button>
             </div>
 
+            <div id="abilities-bar">
+                <div class="ability-slot" id="ability-emp" onclick="activateAbility('emp')">
+                    <div class="key-hint">1</div>
+                    <div class="ability-name">EMP BLAST</div>
+                    <div class="ability-icon emp-icon"></div>
+                    <div class="ability-cost">40</div>
+                </div>
+                <div class="ability-slot" id="ability-overclock" onclick="activateAbility('overclock')">
+                    <div class="key-hint">2</div>
+                    <div class="ability-name">OVERCLOCK</div>
+                    <div class="ability-icon overclock-icon"></div>
+                    <div class="ability-cost">25</div>
+                </div>
+                <div id="energy-container">
+                    <div id="energy-label">ENERGY</div>
+                    <div id="energy-bar-bg">
+                        <div id="energy-bar-fill"></div>
+                    </div>
+                    <div id="energy-value">0 / 100</div>
+                </div>
+            </div>
+
             <div id="game-over-screen" class="hidden">
                 <h1>SYSTEM FAILURE</h1>
                 <p>SECTOR OVERRUN</p>

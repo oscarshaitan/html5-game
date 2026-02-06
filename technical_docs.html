@@ -257,7 +257,29 @@
             its path. Triggered periodically (e.g., every 10 waves).</div>
     </div>
 
-    <h2 id="ui">04. USER INTERFACE</h2>
+    </div>
+
+    <h2 id="abilities">04. COMMANDER ABILITIES</h2>
+    <div class="method">
+        <div class="method-name">activateAbility(type)</div>
+        <div class="desc">Toggles the targeting state for a specific ability (<code>emp</code>, <code>overclock</code>).
+            Blocks tower building while active. Refuses activation if Energy is insufficient or ability is on cooldown.
+        </div>
+    </div>
+    <div class="method">
+        <div class="method-name">useAbility(type, target)</div>
+        <div class="desc">Executes the ability effect. Deducts <code>Energy</code>, sets the <code>maxCooldown</code>,
+            and applies logic:
+            <ul>
+                <li><code>emp</code>: Flags enemies in radius with <code>frozen: true</code> and sets
+                    <code>frozenTimer</code>.</li>
+                <li><code>overclock</code>: Flags a tower with <code>overclocked: true</code> and sets
+                    <code>overclockTimer</code>.</li>
+            </ul>
+        </div>
+    </div>
+
+    <h2 id="ui">05. USER INTERFACE</h2>
     <div class="method">
         <div class="method-name">loadGame()</div>
         <div class="desc">Parses <code>localStorage</code> and restores state, including persistent Core Tower levels

@@ -145,6 +145,35 @@
             border-top: 7.5px solid currentColor;
         }
 
+        .emp-icon {
+            background: currentColor;
+            clip-path: polygon(40% 0%, 90% 0%, 40% 45%, 75% 45%, 10% 100%, 40% 55%, 15% 55%);
+            width: 24px;
+            height: 24px;
+            margin: 3px auto;
+        }
+
+        .overclock-icon {
+            border-radius: 50%;
+            position: relative;
+            border: 2px solid currentColor;
+            width: 24px;
+            height: 24px;
+            margin: 3px auto;
+        }
+
+        .overclock-icon::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 2px;
+            height: 8px;
+            background: currentColor;
+            transform-origin: bottom center;
+            transform: translate(-50%, -100%) rotate(45deg);
+        }
+
         .icon-kite {
             width: 0;
             height: 0;
@@ -320,10 +349,12 @@
         <li><span class="highlight">Rifts</span>: New paths for enemies will open every 10 waves (every 5 waves after
             wave 50). Click a Rift to view its <strong>Rift Intel</strong>.</li>
         <li><span class="highlight">Veteran Rifts</span>: After Wave 50, Rifts have a 10% chance to Evolve into a higher
-            <strong>Tier</strong>. Each Tier (T2, T3...) significantly boosts enemy HP, Speed, and Rewards.</li>
+            <strong>Tier</strong>. Each Tier (T2, T3...) significantly boosts enemy HP, Speed, and Rewards.
+        </li>
         <li><span class="highlight">Temporal Mutations</span>: Every 20 waves, a random Rift will undergo a
             <strong>Temporal Mutation</strong>. During that wave, 100% of enemies from that Rift will be ultra-powerful
-            variants (CRIMSON, VOID, etc.). Mutations are fleeting and clear after the anomaly wave.</li>
+            variants (CRIMSON, VOID, etc.). Mutations are fleeting and clear after the anomaly wave.
+        </li>
         <li><span class="highlight">Bosses</span>: Every 10 waves, a Heavy Boss unit will emerge. After Wave 50, beware
             of <span class="highlight">Surprise Bosses</span> (25% chance every 5 waves).</li>
         <li><span class="highlight">Wave Intelligence</span>: Tap the Wave display (ⓘ icon) to view detailed intel on
@@ -338,6 +369,35 @@
         <li><span class="highlight">Master Mute</span>: Silence all audio for stealth operations.</li>
         <li><span class="highlight">Persistence</span>: Your audio levels are automatically saved and restored between
             sessions.</li>
+    </ul>
+
+    <h2>07. TACTICAL SUPPORT</h2>
+    <p>As Commander, you have access to powerful active abilities powered by <span class="highlight">SECTOR
+            ENERGY</span>. Energy is gained for every enemy unit destroyed on the grid.</p>
+
+    <div class="tower-info">
+        <div class="icon shadow-glow" style="color: var(--neon-blue);">
+            <div class="emp-icon"></div>
+        </div>
+        <div>
+            <strong>EMP BLAST <span class="key">1</span></strong> (Cost: 40)<br>
+            Deploys a localized EMP. Freezes enemies for 5 seconds. Stunned units take <span class="green">20% more
+                damage</span>.
+        </div>
+    </div>
+
+    <div class="tower-info">
+        <div class="icon shadow-glow" style="color: var(--neon-yellow);">
+            <div class="overclock-icon"></div>
+        </div>
+        <div>
+            <strong>OVERCLOCK <span class="key">2</span></strong> (Cost: 25)<br>
+            Target a tower to grant 100% fire rate boost for 10 seconds.
+        </div>
+    </div>
+
+    <ul>
+        <li><span class="highlight">ENERGY</span>: You earn 1 Unit per kill. Max capacity is 100 Units.</li>
     </ul>
 
     <a href="index.html" class="back-link">RETURN TO COMBAT</a>
