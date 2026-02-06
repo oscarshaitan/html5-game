@@ -75,15 +75,32 @@ let selectedBase = false; // Selection state
 const AudioEngine = {
     ctx: null,
     masterGain: null,
+    musicGain: null,
+    sfxGain: null,
     isMuted: false,
+    musicVol: 0.5,
+    sfxVol: 0.7,
     currentMusic: null,
     musicType: 'none',
     musicStep: 0,
-    musicVol: 0.5,
-    sfxVol: 0.7,
+
+    // Frequencies
+    notes: {
+        C2: 65.41, G2: 98.00, A2: 110.00, F2: 87.31,
+        C3: 130.81, Eb3: 155.56, Gb3: 185.00, G3: 196.00, Bb3: 233.08,
+        C4: 261.63, D4: 293.66, E4: 329.63, F4: 349.23, G4: 392.00, A4: 440.00, B4: 493.88,
+        C5: 523.25, D5: 587.33, Eb5: 622.25, E5: 659.25, F5: 698.46, Gb5: 739.99, G5: 783.99
+    },
+
     melodies: {
-        normal: [261.63, 329.63, 392.00, 329.63, 261.63, 329.63, 392.00, 523.25], // C4, E4, G4, E4, C4, E4, G4, C5
-        threat: [130.81, 155.56, 185.00, 155.56, 130.81, 155.56, 185.00, 220.00]  // C3, Eb3, Gb3, Eb3, C3, Eb3, Gb3, A3
+        normal: {
+            lead: ['C4', 0, 'E4', 0, 'G4', 0, 'E4', 0, 'A4', 0, 'G4', 0, 'E4', 0, 'D4', 0],
+            bass: ['C2', 'C2', 'G2', 'G2', 'A2', 'A2', 'F2', 'F2', 'C2', 'C2', 'G2', 'G2', 'A2', 'G2', 'F2', 'G2']
+        },
+        threat: {
+            lead: ['C5', 'Eb5', 'G5', 'Eb5', 'Gb5', 'Eb5', 'C5', 'Bb4', 'C5', 'Eb5', 'Gb5', 'Eb5', 'F5', 'Eb5', 'D5', 'Bb4'],
+            bass: ['C2', 0, 'C2', 0, 'Eb2', 0, 'Eb2', 0, 'Gb2', 0, 'Gb2', 0, 'G2', 0, 'G2', 0]
+        }
     },
 
     init() {
@@ -130,7 +147,7 @@ const AudioEngine = {
     toggleMute() {
         this.isMuted = !this.isMuted;
         if (this.masterGain) {
-            this.masterGain.gain.setValueAtTime(this.isMuted ? 0 : 1, this.ctx.currentTime);
+            this.masterGain.gain.setTargetAtTime(this.isMuted ? 0 : 1, this.ctx.currentTime, 0.1);
         }
         return this.isMuted;
     },
@@ -145,7 +162,6 @@ const AudioEngine = {
         gain.connect(this.sfxGain);
 
         const now = this.ctx.currentTime;
-
         switch (type) {
             case 'shoot':
                 osc.type = 'square';
@@ -199,28 +215,72 @@ const AudioEngine = {
 
         if (this.currentMusic) clearInterval(this.currentMusic);
 
-        const tempo = targetType === 'threat' ? 200 : 400; // ms per note
+        const stepTime = targetType === 'threat' ? 0.125 : 0.2; // 16th note equivalent
         const melody = this.melodies[targetType];
 
         this.currentMusic = setInterval(() => {
             if (this.isMuted || gameState !== 'playing') return;
 
-            const freq = melody[this.musicStep % melody.length];
+            const step = this.musicStep % 16;
             this.musicStep++;
 
-            const osc = this.ctx.createOscillator();
-            const g = this.ctx.createGain();
-            osc.connect(g);
-            g.connect(this.musicGain);
+            // Play Bass
+            const bassNote = melody.bass[step];
+            if (bassNote) {
+                this.playNote(this.notes[bassNote] || 60, 'triangle', 0.1, stepTime * 0.9);
+            }
 
-            osc.type = targetType === 'threat' ? 'sawtooth' : 'square';
-            osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
-            g.gain.setValueAtTime(0.03, this.ctx.currentTime);
-            g.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.15);
+            // Play Lead
+            const leadNote = melody.lead[step];
+            if (leadNote) {
+                // Chance for arpeggio on threat
+                if (targetType === 'threat' && step % 4 === 0) {
+                    this.playArp(this.notes[leadNote], 'square', 0.05, stepTime * 0.8);
+                } else {
+                    this.playNote(this.notes[leadNote], 'square', 0.05, stepTime * 0.7);
+                }
+            }
+        }, stepTime * 1000);
+    },
 
-            osc.start();
-            osc.stop(this.ctx.currentTime + 0.15);
-        }, tempo);
+    playNote(freq, type, vol, duration) {
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const g = this.ctx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+        osc.connect(g);
+        g.connect(this.musicGain);
+
+        g.gain.setValueAtTime(vol, this.ctx.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
+
+        osc.start();
+        osc.stop(this.ctx.currentTime + duration);
+    },
+
+    playArp(baseFreq, type, vol, duration) {
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const g = this.ctx.createGain();
+        osc.type = type;
+
+        const now = this.ctx.currentTime;
+        const arpSpeed = 0.05;
+        // Major arpeggio logic (root, 3rd, 5th)
+        osc.frequency.setValueAtTime(baseFreq, now);
+        osc.frequency.setValueAtTime(baseFreq * 1.25, now + arpSpeed);
+        osc.frequency.setValueAtTime(baseFreq * 1.5, now + arpSpeed * 2);
+        osc.frequency.setValueAtTime(baseFreq * 2, now + arpSpeed * 3);
+
+        osc.connect(g);
+        g.connect(this.musicGain);
+
+        g.gain.setValueAtTime(vol, now);
+        g.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+        osc.start();
+        osc.stop(now + duration);
     }
 };
 
