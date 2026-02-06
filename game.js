@@ -59,6 +59,7 @@ let prepTimer = 30; // seconds
 let frameCount = 0;
 
 let mutantTypes = []; // Keys of generated mutant enemies
+let mutantIntensity = 1;
 
 
 let isPaused = false;
@@ -69,6 +70,112 @@ let baseCooldown = 0;
 let baseRange = 150;
 let baseDamage = 20;
 let selectedBase = false; // Selection state
+
+// --- Audio Engine ---
+const AudioEngine = {
+    ctx: null,
+    masterGain: null,
+    isMuted: false,
+    currentMusic: null,
+    musicType: 'none', // none, normal, threat
+
+    init() {
+        if (this.ctx) return;
+        this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        this.masterGain = this.ctx.createGain();
+        this.masterGain.connect(this.ctx.destination);
+    },
+
+    toggleMute() {
+        this.isMuted = !this.isMuted;
+        if (this.masterGain) {
+            this.masterGain.gain.setValueAtTime(this.isMuted ? 0 : 1, this.ctx.currentTime);
+        }
+        return this.isMuted;
+    },
+
+    playSFX(type) {
+        if (!this.ctx || this.isMuted) return;
+
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.connect(gain);
+        gain.connect(this.masterGain);
+
+        const now = this.ctx.currentTime;
+
+        switch (type) {
+            case 'shoot':
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(400, now);
+                osc.frequency.exponentialRampToValueAtTime(100, now + 0.1);
+                gain.gain.setValueAtTime(0.1, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                osc.start(now);
+                osc.stop(now + 0.1);
+                break;
+            case 'explosion':
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(100, now);
+                osc.frequency.exponentialRampToValueAtTime(10, now + 0.3);
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.linearRampToValueAtTime(0, now + 0.3);
+                osc.start(now);
+                osc.stop(now + 0.3);
+                break;
+            case 'hit':
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(150, now);
+                osc.frequency.linearRampToValueAtTime(50, now + 0.2);
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.linearRampToValueAtTime(0, now + 0.2);
+                osc.start(now);
+                osc.stop(now + 0.2);
+                break;
+            case 'build':
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(200, now);
+                osc.frequency.exponentialRampToValueAtTime(800, now + 0.2);
+                gain.gain.setValueAtTime(0.1, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                osc.start(now);
+                osc.stop(now + 0.2);
+                break;
+        }
+    },
+
+    updateMusic() {
+        if (!this.ctx) return;
+
+        const hasThreat = enemies.some(e => e.type === 'boss' || e.isMutant);
+        const targetType = hasThreat ? 'threat' : 'normal';
+
+        if (this.musicType === targetType) return;
+        this.musicType = targetType;
+
+        // Simple 8-bit beat
+        if (this.currentMusic) clearInterval(this.currentMusic);
+
+        const tempo = targetType === 'threat' ? 150 : 300; // lower is faster for setInterval
+        const freq = targetType === 'threat' ? 60 : 110;
+
+        this.currentMusic = setInterval(() => {
+            if (this.isMuted || gameState !== 'playing') return;
+            const osc = this.ctx.createOscillator();
+            const g = this.ctx.createGain();
+            osc.connect(g);
+            g.connect(this.masterGain);
+
+            osc.type = targetType === 'threat' ? 'sawtooth' : 'pulse' || 'square';
+            osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+            g.gain.setValueAtTime(0.05, this.ctx.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.1);
+
+            osc.start();
+            osc.stop(this.ctx.currentTime + 0.1);
+        }, tempo);
+    }
+};
 
 // --- Initialization ---
 window.onload = () => {
@@ -95,6 +202,9 @@ window.onload = () => {
     // Hotkeys
     window.addEventListener('keydown', (e) => {
         if (gameState !== 'playing') return;
+
+        // Init audio on first interaction
+        AudioEngine.init();
 
         switch (e.key.toLowerCase()) {
             case 'q': selectTower('basic'); break;
@@ -303,10 +413,11 @@ window.repairBase = function () {
         const baseX = Math.floor(cols / 2) * GRID_SIZE + GRID_SIZE / 2;
         const baseY = Math.floor(rows / 2) * GRID_SIZE + GRID_SIZE / 2;
         createParticles(baseX, baseY, '#00ff41', 20); // Green heal
+        AudioEngine.playSFX('build');
         updateUI();
         updateSelectionUI(); // Update buttons just in case
     }
-};
+}
 
 window.upgradeBase = function () {
     // Cost: 200 * (level + 1)
@@ -321,10 +432,11 @@ window.upgradeBase = function () {
         const baseX = Math.floor(cols / 2) * GRID_SIZE + GRID_SIZE / 2;
         const baseY = Math.floor(rows / 2) * GRID_SIZE + GRID_SIZE / 2;
         createParticles(baseX, baseY, '#00f3ff', 30); // Blue upgrade
+        AudioEngine.playSFX('build');
         updateUI();
         updateSelectionUI();
     }
-};
+}
 
 function resize() {
     width = canvas.width = window.innerWidth;
@@ -401,6 +513,7 @@ function calculatePath() {
 // --- Game Control ---
 
 window.startGame = function () {
+    AudioEngine.init(); // Initialize audio context on start
     document.getElementById('start-screen').classList.add('hidden');
     resetGameLogic();
     gameState = 'playing';
@@ -408,6 +521,7 @@ window.startGame = function () {
 };
 
 window.resetGame = function () {
+    AudioEngine.init();
     // This is "Game Over" restart aka System Reboot
     // We can just wipe save and start fresh
     fullReset();
@@ -418,16 +532,9 @@ window.fullReset = function () {
     location.reload();
 };
 
-window.togglePause = function () {
-    if (gameState !== 'playing') return;
-    isPaused = !isPaused;
-
-    const menu = document.getElementById('pause-menu');
-    if (isPaused) {
-        menu.classList.remove('hidden');
-    } else {
-        menu.classList.add('hidden');
-    }
+window.toggleMute = function () {
+    const muted = AudioEngine.toggleMute();
+    document.getElementById('mute-btn').innerText = `SOUND: ${muted ? 'OFF' : 'ON'}`;
 };
 
 window.saveGame = function () {
@@ -578,13 +685,29 @@ function startWave() {
         generateMutation();
     }
 
+    // Dynamic Mutant Chance (Post 50)
+    let baseMutantChance = 0.2;
+    let progression = wave > 50 ? (wave - 50) * 0.05 : 0;
+    let totalPotential = baseMutantChance + progression;
+    let activeMutantChance = totalPotential % 1.0;
+    // Handle the "exactly 100%" case which % 1.0 turns into 0
+    if (activeMutantChance < 0.01 && totalPotential >= 1) activeMutantChance = 1.0;
+    mutantIntensity = 1 + Math.floor(totalPotential);
+
+    // Play wave start sound
+    AudioEngine.init();
+    AudioEngine.playSFX('build');
+
     for (let i = 0; i < baseCount; i++) {
         let type = 'basic';
         const r = Math.random();
 
         // Include mutants in the pool if available
-        if (mutantTypes.length > 0 && r < 0.2) {
+        if (mutantTypes.length > 0 && r < activeMutantChance) {
             type = mutantTypes[Math.floor(Math.random() * mutantTypes.length)];
+            // If intensity is high, we might want to push more to the queue, 
+            // but for now let's just ensure this one is a mutant.
+            // i++ will be handled by the loop naturally if we just set the type.
         }
         else if (wave < 3) {
             type = 'basic';
@@ -621,6 +744,33 @@ function startWave() {
     // spawnQueue.sort((a,b) => (a === 'tank' ? 1 : -1)); 
 
     updateUI();
+}
+
+function generateMutation() {
+    // Pick a base type to mutate
+    const keys = ['basic', 'fast', 'tank'];
+    const baseType = keys[Math.floor(Math.random() * keys.length)];
+    const config = ENEMIES[baseType];
+
+    // Create new mutant type
+    const mutantKey = `mutant_${baseType}_${wave}`;
+    const mutationNames = ['CRIMSON', 'VOID', 'PHASE', 'NEON', 'TITAN'];
+    const name = mutationNames[Math.floor(Math.random() * mutationNames.length)];
+
+    // Mutants are tougher than their base versions
+    ENEMIES[mutantKey] = {
+        ...config,
+        name: `${name} ${baseType.toUpperCase()}`,
+        hp: config.hp * 1.5,
+        speed: config.speed * 1.2,
+        reward: config.reward * 2,
+        color: '#fff', // White glow for mutants
+        isMutant: true
+    };
+
+    mutantTypes.push(mutantKey);
+    console.log(`Mutation detected: ${mutantKey} (Base: ${baseType})`);
+    AudioEngine.playSFX('hit'); // Alert sound
 }
 
 function generateNewPath() {
@@ -1097,8 +1247,12 @@ function update() {
 
     if (lives <= 0) {
         gameState = 'gameover';
+        AudioEngine.playSFX('hit');
         document.getElementById('game-over-screen').classList.remove('hidden');
     }
+
+    // Update music state based on bosses/mutants
+    AudioEngine.updateMusic();
 }
 
 function spawnEnemy() {
@@ -1131,12 +1285,12 @@ function updateEnemies() {
         let e = enemies[i];
 
         // Move towards next waypoint
-        // Use e.currentPath instead of global waypoints
-        const path = e.currentPath || paths[0]; // Fallback
+        const path = e.currentPath || paths[0];
         const target = path[e.pathIndex + 1];
         if (!target) {
             // Reached end
             lives--;
+            AudioEngine.playSFX('hit');
             updateUI();
             enemies.splice(i, 1);
             continue;
@@ -1222,6 +1376,7 @@ function updateTowers() {
                 type: 'base' // Special projectile
             });
             baseCooldown = currentCooldown;
+            AudioEngine.playSFX('shoot');
         }
     }
 }
@@ -1235,6 +1390,7 @@ function shoot(tower, target) {
         damage: tower.damage,
         color: tower.color
     });
+    AudioEngine.playSFX('shoot');
 }
 
 function updateProjectiles() {
@@ -1271,6 +1427,7 @@ function hitEnemy(enemy, damage) {
             enemies.splice(index, 1);
             money += enemy.reward;
             createParticles(enemy.x, enemy.y, enemy.color, 8);
+            AudioEngine.playSFX('explosion');
             updateUI();
         }
     }
