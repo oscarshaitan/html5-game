@@ -251,6 +251,11 @@
         <div class="method-name">generateMutation()</div>
         <div class="desc"><i>(Internal)</i> Logic hook for creating mutated enemy variants every 20 waves.</div>
     </div>
+    <div class="method">
+        <div class="method-name">generateNewPath()</div>
+        <div class="desc">Generates a randomized independent path from the grid edge to the core. Destroys any towers in
+            its path. Triggered periodically (e.g., every 10 waves).</div>
+    </div>
 
     <h2 id="ui">04. USER INTERFACE</h2>
     <div class="method">
@@ -286,6 +291,16 @@
         <div class="method-name">AudioEngine.setVolume(type, val)</div>
         <div class="desc">Adjusts gain nodes for 'music' or 'sfx' and persists settings to <code>localStorage</code>.
         </div>
+    </div>
+    <div class="method">
+        <div class="method-name">AudioEngine.toggleMute()</div>
+        <div class="desc">Toggles the master gain node between 0 and 1 with a smooth 100ms ramp. Synchronizes UI mute
+            buttons.</div>
+    </div>
+    <div class="method">
+        <div class="method-name">AudioEngine.init()</div>
+        <div class="desc">Initializes the Web Audio API context. Resumes context if suspended (browser security
+            requirement).</div>
     </div>
 
     <h2 id="rendering">06. RENDERING PIPELINE</h2>

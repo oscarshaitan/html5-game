@@ -30,6 +30,7 @@ let lives = 20;
 
 let selectedTowerType = null; // null means we might be selecting an existing tower
 let selectedPlacedTower = null; // Reference to a placed tower object
+let selectedRift = null; // Reference to a selected rift object
 
 let towers = [];
 let enemies = [];
@@ -57,9 +58,6 @@ let isHovering = false;
 let isWaveActive = false;
 let prepTimer = 30; // seconds
 let frameCount = 0;
-
-let mutantTypes = []; // Keys of generated mutant enemies
-let mutantIntensity = 1;
 
 
 let isPaused = false;
@@ -470,6 +468,22 @@ function handleClick() {
         return;
     }
 
+    // Check interaction with RIFTS (Spawns)
+    let clickedRift = null;
+    for (let rift of paths) {
+        const spawn = rift.points[0];
+        const dist = Math.hypot(spawn.x - mouseX, spawn.y - mouseY);
+        if (dist < 30) { // Rift selection radius
+            clickedRift = rift;
+            break;
+        }
+    }
+
+    if (clickedRift) {
+        selectRift(clickedRift);
+        return;
+    }
+
     // Check interaction with BASE (Center)
     // Base is at center
     const cols = Math.floor(width / GRID_SIZE);
@@ -495,10 +509,20 @@ function handleClick() {
 function selectBase() {
     selectedBase = true;
     selectedPlacedTower = null;
+    selectedRift = null;
     selectedTowerType = null;
     // Clear any potential "ghost" selection from UI
     document.querySelectorAll('.tower-selector').forEach(el => el.classList.remove('selected'));
 
+    updateSelectionUI();
+}
+
+function selectRift(rift) {
+    selectedRift = rift;
+    selectedPlacedTower = null;
+    selectedBase = false;
+    selectedTowerType = null;
+    document.querySelectorAll('.tower-selector').forEach(el => el.classList.remove('selected'));
     updateSelectionUI();
 }
 
@@ -600,20 +624,22 @@ function calculatePath() {
         startC = 0; startR = 0;
     }
 
-    const startNode = { c: startC, r: startR };
-
     // Find path
     // Pass empty towers list since this is initial generation
-    const pathPoints = findPathOnGrid(startNode, endNode, []);
+    const pathPoints = findPathOnGrid({ c: startC, r: startR }, endNode, []);
 
     if (pathPoints && pathPoints.length > 0) {
-        paths.push(pathPoints);
+        paths.push({ points: pathPoints, level: 1 });
     } else {
         // Fallback manual path if something fails
         console.warn("Failed to generate random path, using fallback");
-        const fallbackPath = [];
-        fallbackPath.push({ x: 20, y: 20 });
-        fallbackPath.push({ x: width / 2, y: height / 2 });
+        const fallbackPath = {
+            points: [
+                { x: 20, y: 20 },
+                { x: width / 2, y: height / 2 }
+            ],
+            level: 1
+        };
         paths.push(fallbackPath);
     }
 }
@@ -664,43 +690,60 @@ window.toggleWavePanel = function () {
 };
 
 function updateWavePanel() {
-    const nextWave = wave; // We show data for the currently incoming wave
+    const nextWave = wave;
     const baseCount = 5 + Math.floor(nextWave * 2.5);
 
-    // Mutant Chance Math (mirroring startWave)
-    let baseMutantChance = 0.2;
-    let progression = nextWave > 50 ? (nextWave - 50) * 0.05 : 0;
-    let totalPotential = baseMutantChance + progression;
-    let activeMutantChance = totalPotential % 1.0;
-    if (activeMutantChance < 0.01 && totalPotential >= 1) activeMutantChance = 1.0;
-
-    const intensity = 1 + Math.floor(totalPotential);
+    // Rift Stats
+    const totalRifts = paths.length;
+    const upgradedRiftsCount = paths.filter(p => p.level > 1).length;
+    const mutatedRiftsCount = paths.filter(p => p.mutation).length;
+    const maxTier = paths.reduce((max, p) => Math.max(max, p.level || 1), 1);
 
     document.getElementById('intel-count').innerText = baseCount;
-    document.getElementById('intel-mutant-chance').innerText = `${Math.round(activeMutantChance * 100)}% (x${intensity})`;
+
+    // Replace Mutant Chance with Rift Strategy Info
+    const mutantChanceEl = document.getElementById('intel-mutant-chance');
+    if (mutatedRiftsCount > 0) {
+        mutantChanceEl.innerHTML = `<span style="color: #fff; font-weight: bold;">${mutatedRiftsCount} SECTORS MUTATED</span>`;
+    } else {
+        mutantChanceEl.innerText = "NO ANOMALIES";
+    }
 
     const threatTitle = nextWave % 10 === 0 ? "CRITICAL (BOSS)" : (nextWave % 5 === 0 ? "ELEVATED" : "NORMAL");
     const threatSpan = document.getElementById('intel-threat');
     threatSpan.innerText = threatTitle;
     threatSpan.style.color = nextWave % 10 === 0 ? "var(--neon-pink)" : (nextWave % 5 === 0 ? "#ffcc00" : "white");
 
-    const specialList = document.getElementById('intel-special');
-    specialList.innerHTML = '';
+    // Add extra info to the panel
+    const specialList = document.getElementById('intel-special-list');
+    if (!specialList) return; // Guard clause for missing element
 
-    if (nextWave % 10 === 0) specialList.innerHTML += "<li>Guaranteed BOSS spawn</li>";
-    if (nextWave % 20 === 0) specialList.innerHTML += "<li>New MUTATION event</li>";
+    specialList.innerHTML = "";
+
+    if (nextWave % 10 === 0) specialList.innerHTML += "<li>Guaranteed BOSS arrival</li>";
+    if (nextWave % 20 === 0) specialList.innerHTML += `<li style="color: #fff; font-weight: bold;">>>> INCOMING MUTATION EVENT <<<</li>`;
+
+    // Show Upgrade Probability (Post Wave 50)
+    if (nextWave >= 50) {
+        specialList.innerHTML += `<li style="color: #00f3ff; font-weight: bold;">10% Chance for SECTOR EVOLUTION (Upgrade)</li>`;
+    }
+
+    if (upgradedRiftsCount > 0) {
+        specialList.innerHTML += `<li style="color: var(--neon-pink)">${upgradedRiftsCount} VETERAN RIFTS (Max T${maxTier})</li>`;
+        specialList.innerHTML += `<li>T${maxTier} Boosts: HP x${(1 + (maxTier - 1) * 0.5).toFixed(1)}</li>`;
+    }
+
+    if (mutatedRiftsCount > 0) {
+        paths.filter(p => p.mutation).forEach(p => {
+            specialList.innerHTML += `<li style="color: ${p.mutation.color}">SECTOR ${p.mutation.name} ACTIVE</li>`;
+        });
+    }
+
     if (nextWave > 50 && nextWave % 5 === 0 && nextWave % 10 !== 0) {
         specialList.innerHTML += "<li>SURPRISE BOSS possible (25%)</li>";
     }
 
-    // Path generation info
-    if (nextWave <= 50) {
-        if ((nextWave - 1) % 10 === 0 && nextWave > 1) specialList.innerHTML += "<li>NEW PATH detected</li>";
-    } else {
-        if ((nextWave - 1) % 5 === 0 && nextWave > 1) specialList.innerHTML += "<li>NEW PATH detected</li>";
-    }
-
-    if (specialList.innerHTML === '') specialList.innerHTML = "<li>No anomalies detected</li>";
+    if (specialList.innerHTML === "") specialList.innerHTML = "<li>All monitoring clear.</li>";
 }
 
 window.toggleMute = function () {
@@ -727,12 +770,10 @@ window.saveGame = function () {
         money, lives, wave, isWaveActive, prepTimer, spawnQueue, paths,
         towers: towers.map(t => ({
             type: t.type, x: t.x, y: t.y, level: t.level,
-            damage: t.damage, range: t.range, cooldown: t.cooldown, maxCooldown: t.maxCooldown, // Save maxCooldown
+            damage: t.damage, range: t.range, cooldown: t.cooldown, maxCooldown: t.maxCooldown,
             color: t.color, cost: t.cost, totalCost: t.totalCost
         })),
-        baseLevel, baseCooldown, // Save base state
-        mutantTypes, // Save list of mutants
-        customEnemies: mutantTypes.map(k => ({ key: k, data: ENEMIES[k] })) // Save actual definitions
+        baseLevel, baseCooldown
     };
 
     localStorage.setItem('neonDefenseSave', JSON.stringify(data));
@@ -753,17 +794,16 @@ window.loadGame = function () {
     isWaveActive = data.isWaveActive;
     prepTimer = data.prepTimer;
     spawnQueue = data.spawnQueue || []; // Load queue
-    paths = data.paths || paths; // Load paths or keep default if missing (backward compatibility)
-    baseLevel = data.baseLevel || 0; // Load base level
-    baseCooldown = data.baseCooldown || 0; // Load base cooldown
 
-    // Restore Mutants
-    mutantTypes = data.mutantTypes || [];
-    if (data.customEnemies) {
-        data.customEnemies.forEach(e => {
-            ENEMIES[e.key] = e.data;
+    if (data.paths) {
+        paths = data.paths.map(p => {
+            if (Array.isArray(p)) return { points: p, level: 1, mutation: null };
+            return p;
         });
     }
+
+    baseLevel = data.baseLevel || 0;
+    baseCooldown = data.baseCooldown || 0;
 
     // Restore towers
     towers = data.towers.map(t => ({
@@ -819,9 +859,9 @@ function resetGameLogic() {
     particles = [];
     spawnQueue = []; // Clear spawn queue on reset
 
-    // Reset mutations
-    mutantTypes.forEach(k => delete ENEMIES[k]);
-    mutantTypes = [];
+    // Reset paths to initial state
+    paths = [];
+    calculatePath();
 
     startPrepPhase();
     updateUI();
@@ -836,6 +876,12 @@ function startPrepPhase() {
     // UI Updates
     document.getElementById('skip-btn').style.display = 'block';
     document.getElementById('wave-display').innerText = wave; // Show incoming wave number
+
+    // Auto-update Wave Intel if open
+    const panel = document.getElementById('wave-info-panel');
+    if (panel && !panel.classList.contains('hidden')) {
+        updateWavePanel();
+    }
 
     // New Path Generation
     // Up to Wave 50: Every 10 waves (11, 21, 31, 41, 51)
@@ -858,27 +904,37 @@ function startWave() {
     prepTimer = 0;
     document.getElementById('skip-btn').style.display = 'none';
 
+    // Clear Temporal Mutations (Fleeting)
+    // Unlike Rift Tiers, mutations only last for the wave they occur in.
+    paths.forEach(p => p.mutation = null);
+
+    // Rift Upgrades (Post Wave 50) - PERMANENT
+    if (wave > 50) {
+        paths.forEach(p => {
+            if (Math.random() < 0.10) {
+                p.level++;
+                console.log(`!!! RIFT EVOLVED !!! Tier: ${p.level}`);
+            }
+        });
+    }
+
+    // Auto-update Wave Intel if open (to show Tier upgrades/mutations immediately)
+    const panel = document.getElementById('wave-info-panel');
+    if (panel && !panel.classList.contains('hidden')) {
+        updateWavePanel();
+    }
+
     saveGame(); // Save on wave start
 
     waveTimer = 0;
     spawnTimer = 0;
-    // Generate Mixed Wave
     spawnQueue = [];
-    const baseCount = 5 + Math.floor(wave * 2.5); // INCREASED DIFFICULTY
+    const baseCount = 5 + Math.floor(wave * 2.5);
 
     // Check for Mutation (Every 20 waves)
     if (wave % 20 === 0) {
         generateMutation();
     }
-
-    // Dynamic Mutant Chance (Post 50)
-    let baseMutantChance = 0.2;
-    let progression = wave > 50 ? (wave - 50) * 0.05 : 0;
-    let totalPotential = baseMutantChance + progression;
-    let activeMutantChance = totalPotential % 1.0;
-    // Handle the "exactly 100%" case which % 1.0 turns into 0
-    if (activeMutantChance < 0.01 && totalPotential >= 1) activeMutantChance = 1.0;
-    mutantIntensity = 1 + Math.floor(totalPotential);
 
     // Play wave start sound
     AudioEngine.init();
@@ -888,28 +944,16 @@ function startWave() {
         let type = 'basic';
         const r = Math.random();
 
-        // Include mutants in the pool if available
-        if (mutantTypes.length > 0 && r < activeMutantChance) {
-            type = mutantTypes[Math.floor(Math.random() * mutantTypes.length)];
-            // If intensity is high, we might want to push more to the queue, 
-            // but for now let's just ensure this one is a mutant.
-            // i++ will be handled by the loop naturally if we just set the type.
-        }
-        else if (wave < 3) {
+        if (wave < 3) {
             type = 'basic';
         } else if (wave < 5) {
-            type = 'basic';
-        } else if (wave < 5) {
-            // Mix of basic and fast
             type = r < 0.3 ? 'fast' : 'basic';
         } else if (wave < 10) {
-            // Basic, Fast, Tank introduction
-            if (wave % 5 === 0 && i < 2) type = 'tank'; // Guaranteed tanks on multiples of 5
+            if (wave % 5 === 0 && i < 2) type = 'tank';
             else if (r < 0.2) type = 'fast';
             else if (r < 0.25) type = 'tank';
             else type = 'basic';
         } else {
-            // High waves: chaotic mix
             if (r < 0.3) type = 'fast';
             else if (r < 0.5) type = 'tank';
             else type = 'basic';
@@ -917,55 +961,49 @@ function startWave() {
         spawnQueue.push(type);
     }
 
-    // Boss Every 10 Waves
+    // Boss Handling
     if (wave % 10 === 0) {
-        // Insert boss at random position
         const randomIndex = Math.floor(Math.random() * (spawnQueue.length + 1));
         spawnQueue.splice(randomIndex, 0, 'boss');
     }
 
-    // Surprise Boss every 5 waves after 50
     if (wave > 50 && wave % 5 === 0 && wave % 10 !== 0) {
-        if (Math.random() < 0.25) { // 25% chance
+        if (Math.random() < 0.25) {
             console.log("!!! SURPRISE BOSS DETECTED !!!");
             const randomIndex = Math.floor(Math.random() * (spawnQueue.length + 1));
             spawnQueue.splice(randomIndex, 0, 'boss');
-            AudioEngine.playSFX('hit'); // Alert sound
+            AudioEngine.playSFX('hit');
         }
     }
-
-
-
-    // Sort queue slightly so tanks come last (harder)
-    // spawnQueue.sort((a,b) => (a === 'tank' ? 1 : -1)); 
 
     updateUI();
 }
 
 function generateMutation() {
-    // Pick a base type to mutate
-    const keys = ['basic', 'fast', 'tank'];
-    const baseType = keys[Math.floor(Math.random() * keys.length)];
-    const config = ENEMIES[baseType];
+    // Pick a random rift to mutate
+    const targetRift = paths[Math.floor(Math.random() * paths.length)];
 
-    // Create new mutant type
-    const mutantKey = `mutant_${baseType}_${wave}`;
-    const mutationNames = ['CRIMSON', 'VOID', 'PHASE', 'NEON', 'TITAN'];
-    const name = mutationNames[Math.floor(Math.random() * mutationNames.length)];
+    // Mutation Profiles
+    const profiles = [
+        { name: 'CRIMSON', color: '#ff0033', hp: 1.6, speed: 1.2, reward: 2.0 },
+        { name: 'VOID', color: '#aa00ff', hp: 1.4, speed: 1.5, reward: 2.5 },
+        { name: 'TITAN', color: '#00ffaa', hp: 3.0, speed: 0.7, reward: 3.0 },
+        { name: 'PHASE', color: '#ffffff', hp: 1.2, speed: 2.0, reward: 1.5 },
+        { name: 'NEON', color: '#fcee0a', hp: 1.8, speed: 1.3, reward: 2.0 }
+    ];
 
-    // Mutants are tougher than their base versions
-    ENEMIES[mutantKey] = {
-        ...config,
-        name: `${name} ${baseType.toUpperCase()}`,
-        hp: config.hp * 1.5,
-        speed: config.speed * 1.2,
-        reward: config.reward * 2,
-        color: '#fff', // White glow for mutants
-        isMutant: true
+    const profile = profiles[Math.floor(Math.random() * profiles.length)];
+
+    targetRift.mutation = {
+        key: profile.name,
+        name: profile.name,
+        color: profile.color,
+        hpMulti: profile.hp,
+        speedMulti: profile.speed,
+        rewardMulti: profile.reward
     };
 
-    mutantTypes.push(mutantKey);
-    console.log(`Mutation detected: ${mutantKey} (Base: ${baseType})`);
+    console.log(`!!! RIFT MUTATED !!! Sector: ${profile.name}`);
     AudioEngine.playSFX('hit'); // Alert sound
 }
 
@@ -983,7 +1021,7 @@ function generateNewPath() {
     // Helper to check if grid cell is occupied by any existing path
     const isLocationOnPath = (c, r) => {
         for (const path of paths) {
-            for (const p of path) {
+            for (const p of path.points) {
                 const pc = Math.floor(p.x / GRID_SIZE);
                 const pr = Math.floor(p.y / GRID_SIZE);
                 if (pc === c && pr === r) return true;
@@ -1021,7 +1059,7 @@ function generateNewPath() {
 
     if (newPathPoints) {
         // No merging logic anymore - path goes all the way to base
-        paths.push(newPathPoints);
+        paths.push({ points: newPathPoints, level: 1 });
 
         // DESTROY TOWERS ON PATH
         // Check for collisions and sell
@@ -1166,6 +1204,7 @@ function selectPlacedTower(tower) {
 window.deselectTower = function () {
     selectedPlacedTower = null;
     selectedBase = false;
+    selectedRift = null;
     document.getElementById('selection-panel').classList.add('hidden');
 };
 
@@ -1211,6 +1250,59 @@ function getUpgradeCost(tower) {
 
 function updateSelectionUI() {
     const panel = document.getElementById('selection-panel');
+
+    if (selectedRift) {
+        const tier = selectedRift.level || 1;
+        const mutation = selectedRift.mutation;
+
+        let hpMulti = (1 + (tier - 1) * 0.5);
+        let speedMulti = (1 + (tier - 1) * 0.15);
+        let rewardMulti = (1 + (tier - 1) * 0.5);
+
+        if (mutation) {
+            hpMulti *= mutation.hpMulti;
+            speedMulti *= mutation.speedMulti;
+            rewardMulti *= mutation.rewardMulti;
+        }
+
+        panel.classList.remove('hidden');
+        panel.innerHTML = `
+            <h3>RIFT INTEL</h3>
+            <div style="margin-bottom: 8px; font-size: 0.9rem; color: #aaa;">Sector Threat Profile</div>
+            
+            ${mutation ? `
+                <div style="background: ${mutation.color}33; border: 1px solid ${mutation.color}; padding: 8px; border-radius: 4px; margin-bottom: 10px;">
+                    <div style="font-size: 0.7rem; color: ${mutation.color}; font-weight: bold;">[ MUTATION DETECTED ]</div>
+                    <div style="font-size: 1.1rem; color: #fff;">${mutation.name} VORTEX</div>
+                </div>
+            ` : ''}
+
+            <div class="stats">Tier: <span class="highlight" style="color: var(--neon-pink)">T${tier}</span></div>
+            <div class="stat-row"><span>HP Multiplier</span> <span style="color: var(--neon-pink)">x${hpMulti.toFixed(1)}</span></div>
+            <div class="stat-row"><span>Speed Multi</span> <span style="color: var(--neon-pink)">x${speedMulti.toFixed(2)}</span></div>
+            <div class="stat-row"><span>Cash Reward</span> <span style="color: var(--neon-pink)">x${rewardMulti.toFixed(1)}</span></div>
+            
+            <p style="font-size: 0.8rem; color: #888; margin-top: 15px; border-top: 1px solid #333; padding-top: 10px;">
+                All anomalies from this rift inherit these veteran multipliers.
+            </p>
+            <div class="actions" style="margin-top: 10px;">
+                <button class="action-btn close" onclick="deselectTower()" style="width: 100%;">CLOSE DISPATCH</button>
+            </div>
+        `;
+
+        // Position panel near rift spawn
+        const spawn = selectedRift.points[0];
+        const screenPos = {
+            x: spawn.x * camera.zoom + camera.x,
+            y: spawn.y * camera.zoom + camera.y
+        };
+        panel.style.left = Math.min(window.innerWidth - 220, Math.max(20, screenPos.x + 50)) + 'px';
+        panel.style.top = Math.min(window.innerHeight - 300, Math.max(20, screenPos.y - 100)) + 'px';
+        panel.style.bottom = 'auto';
+        panel.style.right = 'auto';
+        panel.style.marginRight = '0';
+        return;
+    }
 
     if (selectedBase) {
         panel.classList.remove('hidden');
@@ -1321,7 +1413,8 @@ function isValidPlacement(x, y, towerConfig) {
     // Since everything is grid based, we can just check if the point intersects the path segments with a box check
     const tolerance = GRID_SIZE / 2; // Exact hit
 
-    for (const path of paths) {
+    for (const rift of paths) {
+        const path = rift.points;
         for (let i = 0; i < path.length - 1; i++) {
             const p1 = path[i];
             const p2 = path[i + 1];
@@ -1456,21 +1549,53 @@ function spawnEnemy() {
     const enemyType = spawnQueue.shift(); // Get next enemy type from the queue
     const config = ENEMIES[enemyType];
 
-    // Scale hp with wave
-    const hp = config.hp * (1 + (wave * 0.4)); // INCREASED DIFFICULTY (was 0.2)
-
     // Pick a random path
     const pathIndex = Math.floor(Math.random() * paths.length);
-    const chosenPath = paths[pathIndex];
+    const chosenRift = paths[pathIndex];
+    const chosenPathPoints = chosenRift.points;
+    const riftLevel = chosenRift.level || 1;
+    const mutation = chosenRift.mutation;
+
+    // Base hp scaling with wave
+    let hp = config.hp * (1 + (wave * 0.4));
+    let speed = config.speed;
+    let reward = config.reward;
+    let color = config.color;
+    let name = config.name || enemyType.toUpperCase();
+    let isMutant = false;
+
+    // Apply Rift Level multi (Elite Scaling)
+    if (riftLevel > 1) {
+        hp *= 1 + (riftLevel - 1) * 0.5; // +50% HP per level
+        speed *= 1 + (riftLevel - 1) * 0.15; // +15% Speed per level
+        reward = Math.floor(reward * (1 + (riftLevel - 1) * 0.5)); // +50% Reward
+    }
+
+    // Apply Rift Mutation (Mutation Scaling)
+    if (mutation) {
+        hp *= mutation.hpMulti;
+        speed *= mutation.speedMulti;
+        reward = Math.floor(reward * mutation.rewardMulti);
+        color = mutation.color;
+        name = `${mutation.name} ${name}`;
+        isMutant = true;
+    }
 
     enemies.push({
         ...config,
+        name: name,
         maxHp: hp,
         hp: hp,
+        speed: speed,
+        reward: reward,
+        color: color,
         pathIndex: 0,
-        x: chosenPath[0].x,
-        y: chosenPath[0].y,
-        currentPath: chosenPath, // Store reference to path
+        x: chosenPathPoints[0].x,
+        y: chosenPathPoints[0].y,
+        currentPath: chosenPathPoints, // Store reference to path
+        riftLevel: riftLevel, // Track level for visuals
+        isMutant: isMutant, // Track mutation status
+        mutationKey: mutation ? mutation.key : null,
         frozen: 0,
         type: enemyType // Store the type for drawing/logic
     });
@@ -1481,7 +1606,7 @@ function updateEnemies() {
         let e = enemies[i];
 
         // Move towards next waypoint
-        const path = e.currentPath || paths[0];
+        const path = e.currentPath || paths[0].points;
         const target = path[e.pathIndex + 1];
         if (!target) {
             // Reached end
@@ -1738,7 +1863,11 @@ function draw() {
     ctx.strokeRect(0, 0, width, height);
 
     // Draw Paths
-    for (let path of paths) {
+    for (let pathData of paths) {
+        const path = pathData.points;
+        const riftLevel = pathData.level || 1;
+        const mutation = pathData.mutation;
+
         ctx.beginPath();
         ctx.moveTo(path[0].x, path[0].y);
         for (let i = 1; i < path.length; i++) {
@@ -1749,34 +1878,58 @@ function draw() {
         ctx.lineJoin = 'round';
         ctx.lineWidth = GRID_SIZE * 0.8;
         ctx.shadowBlur = 10;
-        ctx.shadowColor = 'rgba(0, 243, 255, 0.1)'; // Faint glow for all
-        ctx.strokeStyle = 'rgba(0, 243, 255, 0.05)';
+
+        let pathColor = mutation ? mutation.color : (riftLevel > 1 ? 'rgba(255, 0, 172, 0.4)' : 'rgba(0, 243, 255, 0.1)');
+        ctx.shadowColor = pathColor;
+        ctx.strokeStyle = mutation ? `${mutation.color}11` : (riftLevel > 1 ? 'rgba(255, 0, 172, 0.1)' : 'rgba(0, 243, 255, 0.05)');
         ctx.stroke();
         ctx.shadowBlur = 0;
 
         // Center Line
         ctx.lineWidth = 2;
-        ctx.strokeStyle = '#00f3ff';
+        ctx.strokeStyle = mutation ? mutation.color : (riftLevel > 1 ? '#ff00ac' : '#00f3ff');
         ctx.setLineDash([10, 10]);
         ctx.stroke();
         ctx.setLineDash([]);
 
         // Spawn Point
         const spawn = path[0];
-        ctx.shadowBlur = 20;
-        ctx.shadowColor = '#ff4444';
-        ctx.fillStyle = '#ff4444';
+        const pulse = 1 + Math.sin(frameCount * 0.1) * 0.2;
+        ctx.shadowBlur = 20 * pulse;
+
+        const spawnColor = mutation ? mutation.color : (riftLevel > 1 ? '#ff00ac' : '#ff4444');
+        ctx.shadowColor = spawnColor;
+        ctx.fillStyle = spawnColor;
+
         ctx.beginPath();
-        ctx.arc(spawn.x, spawn.y, 20, 0, Math.PI * 2);
+        ctx.arc(spawn.x, spawn.y, 20 * (riftLevel > 1 || mutation ? 1.5 : 1) * pulse, 0, Math.PI * 2);
         ctx.fill();
+
+        // Inner core
         ctx.fillStyle = '#000';
         ctx.beginPath();
         ctx.arc(spawn.x, spawn.y, 10, 0, Math.PI * 2);
         ctx.fill();
+
+        // Level text
+        if (riftLevel > 1) {
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 12px Orbitron';
+            ctx.textAlign = 'center';
+            ctx.fillText(`T${riftLevel}`, spawn.x, spawn.y + 4);
+        }
+
+        // Mutation Tag
+        if (mutation) {
+            ctx.fillStyle = mutation.color;
+            ctx.font = 'bold 10px Orbitron';
+            ctx.textAlign = 'center';
+            ctx.fillText(mutation.name, spawn.x, spawn.y - 30);
+        }
     }
 
     // Draw Base (Core) - using end of first path (assume all lead to base)
-    const base = paths[0][paths[0].length - 1]; // This should be safe now with center logic
+    const base = paths[0].points[paths[0].points.length - 1]; // This should be safe now with center logic
 
     // Selection Ring for Base
     if (selectedBase) {
@@ -1879,6 +2032,18 @@ function draw() {
         }
     }
 
+    // Rift Selection Ring
+    if (selectedRift) {
+        const spawn = selectedRift.points[0];
+        ctx.beginPath();
+        ctx.arc(spawn.x, spawn.y, 40, 0, Math.PI * 2);
+        ctx.strokeStyle = '#ff00ac';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 5]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+    }
+
     // Draw Enemies
     for (let e of enemies) {
         ctx.fillStyle = e.color;
@@ -1906,6 +2071,24 @@ function draw() {
             ctx.arc(e.x, e.y, e.width ? e.width / 2 : 10, 0, Math.PI * 2);
         }
         ctx.fill();
+
+        // Elite Visuals (Veteran Rifts)
+        if (e.riftLevel > 1) {
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(e.x, e.y, (e.width ? e.width / 2 : 10) + 4 + Math.sin(frameCount * 0.2) * 2, 0, Math.PI * 2);
+            ctx.setLineDash([2, 5]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Text indicator for very high tiers
+            if (e.riftLevel >= 3) {
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 10px Orbitron';
+                ctx.fillText(`ELITE`, e.x, e.y - 15);
+            }
+        }
 
         // Health bar
         const hpPct = e.hp / e.maxHp;
