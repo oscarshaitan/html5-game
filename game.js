@@ -98,12 +98,10 @@ function startShake(amt) {
 
 // --- Wave State ---
 let isWaveActive = false;
+let totalKills = { basic: 0, fast: 0, tank: 0, boss: 0, splitter: 0, mini: 0, bulwark: 0, shifter: 0 };
 
 // --- Player Profile & Stats ---
 let playerName = null;
-let totalKills = {
-    basic: 0, fast: 0, tank: 0, boss: 0, splitter: 0, mini: 0, bulwark: 0, shifter: 0
-};
 let prepTimer = 30; // seconds
 let frameCount = 0;
 let energy = 0;
@@ -1117,15 +1115,106 @@ window.shareGame = async function () {
         }
     }
 
-    const shareText = `[NEON DEFENSE STATUS REPORT]\nCommander: ${playerName || "Unknown"}\nSector reached: WAVE ${wave}\nCredits secured: ${money}\nConfirmed Eliminations: ${killSummary}\n\nJoin the defense!`;
+    // Count towers by type
+    const towerCounts = { basic: 0, rapid: 0, sniper: 0 };
+    towers.forEach(t => { if (towerCounts[t.type] !== undefined) towerCounts[t.type]++; });
+
+    const shareText = `[NEON DEFENSE STATUS REPORT]\nCommander: ${playerName || "Unknown"}\nSector reached: WAVE ${wave}\nCredits secured: ${money}\nCommand Center: LEVEL ${baseLevel + 1}\nTowers: Basic(${towerCounts.basic}), Rapid(${towerCounts.rapid}), Sniper(${towerCounts.sniper})\nConfirmed Eliminations: ${killSummary}\n\nJoin the defense!`;
 
     try {
-        // Capture Snapshot
-        const snapshot = canvas.toDataURL('image/png');
+        // Create an offline canvas to render the full report (Game + UI Overlay)
+        const offCanvas = document.createElement('canvas');
+        offCanvas.width = canvas.width;
+        offCanvas.height = canvas.height;
+        const octx = offCanvas.getContext('2d');
+
+        // Draw the main game canvas onto the offline canvas
+        octx.drawImage(canvas, 0, 0);
+
+        // --- Render HUD Overlay onto the Screenshot ---
+        const padding = 20;
+        const bannerHeight = 85;
+
+        // Semi-transparent banner at the top
+        octx.fillStyle = 'rgba(5, 5, 16, 0.9)';
+        octx.fillRect(0, 0, offCanvas.width, bannerHeight);
+        octx.strokeStyle = '#00f3ff';
+        octx.lineWidth = 2;
+        octx.strokeRect(0, 0, offCanvas.width, bannerHeight);
+
+        // Header Text
+        octx.fillStyle = '#ff00ac';
+        octx.font = 'bold 16px Orbitron, sans-serif';
+        octx.textAlign = 'left';
+        octx.fillText('NEON DEFENSE - COMMANDER REPORT', padding, 25);
+
+        // Commander Name
+        octx.fillStyle = '#00f3ff';
+        octx.font = 'bold 22px Orbitron, sans-serif';
+        octx.fillText(`COMMANDER: ${playerName || "UNIDENTIFIED"}`, padding, 55);
+
+        // Wave & Credits (Right Aligned)
+        octx.textAlign = 'right';
+        octx.font = 'bold 18px Orbitron, sans-serif';
+        octx.fillStyle = '#fcee0a';
+        octx.fillText(`WAVE: ${wave}  |  CREDITS: $${money}`, offCanvas.width - padding, 35);
+
+        octx.fillStyle = '#00ff41';
+        octx.fillText(`HQ LVL: ${baseLevel + 1}`, offCanvas.width - padding, 60);
+
+        // 1. ELIMINATIONS PANEL
+        const elimHeight = 250;
+        octx.fillStyle = 'rgba(5, 5, 16, 0.85)';
+        octx.fillRect(offCanvas.width - panelWidth - padding, bannerHeight + padding, panelWidth, elimHeight);
+        octx.strokeStyle = '#ff00ac';
+        octx.strokeRect(offCanvas.width - panelWidth - padding, bannerHeight + padding, panelWidth, elimHeight);
+
+        octx.textAlign = 'left';
+        octx.fillStyle = '#ff00ac';
+        octx.font = 'bold 14px Orbitron, sans-serif';
+        octx.fillText('ELIMINATIONS', offCanvas.width - panelWidth - padding + 10, bannerHeight + padding + 25);
+
+        let y = bannerHeight + padding + 55;
+        for (let type in totalKills) {
+            if (totalKills[type] > 0 || ['basic', 'fast', 'tank'].includes(type)) {
+                // Draw Tiny Enemy Icon
+                const color = ENEMIES[type].color;
+                octx.fillStyle = color;
+                octx.shadowBlur = 5;
+                octx.shadowColor = color;
+
+                const ix = offCanvas.width - panelWidth - padding + 20;
+                const iy = y - 5;
+                octx.beginPath();
+                if (type === 'tank') octx.rect(ix - 6, iy - 6, 12, 12);
+                else if (type === 'fast') { octx.moveTo(ix, iy - 8); octx.lineTo(ix + 4, iy); octx.lineTo(ix, iy + 6); octx.lineTo(ix - 4, iy); octx.closePath(); }
+                else if (type === 'boss') { for (let i = 0; i < 6; i++) { const a = (Math.PI / 3) * i; octx.lineTo(ix + Math.cos(a) * 8, iy + Math.sin(a) * 8); } octx.closePath(); }
+                else if (type === 'bulwark') { octx.rect(ix - 7, iy - 7, 14, 14); }
+                else if (type === 'splitter') { octx.moveTo(ix, iy - 8); octx.lineTo(ix + 7, iy + 5); octx.lineTo(ix - 7, iy + 5); octx.closePath(); }
+                else octx.arc(ix, iy, 6, 0, Math.PI * 2);
+                octx.fill();
+                octx.shadowBlur = 0;
+
+                octx.font = '11px Orbitron, sans-serif';
+                octx.fillStyle = '#fff';
+                octx.fillText(type.toUpperCase(), ix + 15, y);
+                octx.textAlign = 'right';
+                octx.fillText(totalKills[type], offCanvas.width - padding - 15, y);
+                octx.textAlign = 'left';
+                y += 22;
+            }
+        }
+
+        // Stylized watermark/border at the bottom
+        octx.strokeStyle = '#00f3ff';
+        octx.lineWidth = 4;
+        octx.strokeRect(10, 10, offCanvas.width - 20, offCanvas.height - 20);
+
+        // Capture the finished offline canvas
+        const snapshot = offCanvas.toDataURL('image/png');
 
         // Check Web Share API
         if (navigator.share) {
-            // Some browsers require a file for image sharing
             const blob = await (await fetch(snapshot)).blob();
             const file = new File([blob], 'neon_defense_status.png', { type: 'image/png' });
 
@@ -1135,11 +1224,12 @@ window.shareGame = async function () {
                 files: [file]
             });
         } else {
-            // Fallback: Copy text and open image
             await navigator.clipboard.writeText(shareText);
-            alert("Status report copied to clipboard! Opening snapshot...");
+            alert("Status report copied to clipboard! Opening enhanced snapshot...");
             const win = window.open();
-            win.document.write(`<img src="${snapshot}" style="max-width:100%; height:auto;">`);
+            win.document.write(`<body style="background:#050510; display:flex; justify-content:center; align-items:center; height:100vh; margin:0;">
+                <img src="${snapshot}" style="max-width:95%; max-height:95%; border:2px solid #00f3ff; box-shadow:0 0 30px #00f3ff;">
+                </body>`);
         }
     } catch (err) {
         console.error("Sharing failed:", err);
@@ -1156,6 +1246,7 @@ function resetGameLogic() {
     prepTimer = 30;
     frameCount = 0;
     targetingAbility = null;
+    totalKills = { basic: 0, fast: 0, tank: 0, boss: 0, splitter: 0, mini: 0, bulwark: 0, shifter: 0 };
 
     // Reset ability cooldowns
     for (let k in abilities) abilities[k].cooldown = 0;
