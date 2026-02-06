@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Defense - Technical Documentation</title>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Source+Code+Pro:wght@400;700&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --neon-blue: #00f3ff;
+            --neon-pink: #ff00acee;
+            --neon-green: #00ff41;
+            --bg-color: #050510;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: #ddd;
+            font-family: 'Source Code Pro', monospace;
+            margin: 0;
+            padding: 40px;
+            line-height: 1.4;
+        }
+
+        h1,
+        h2,
+        h3 {
+            font-family: 'Orbitron', sans-serif;
+            color: var(--neon-blue);
+            text-transform: uppercase;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            border-bottom: 2px solid var(--neon-blue);
+            padding-bottom: 20px;
+        }
+
+        h2 {
+            margin-top: 60px;
+            color: var(--neon-pink);
+            border-left: 5px solid var(--neon-pink);
+            padding-left: 15px;
+        }
+
+        .method {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 20px;
+            margin: 20px 0;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .method-name {
+            color: var(--neon-green);
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+
+        .params {
+            color: #888;
+            font-style: italic;
+        }
+
+        .desc {
+            margin-top: 10px;
+            color: #bbb;
+        }
+
+        code {
+            color: var(--neon-blue);
+            background: rgba(0, 243, 255, 0.1);
+            padding: 2px 4px;
+            border-radius: 3px;
+        }
+
+        nav {
+            position: sticky;
+            top: 20px;
+            background: var(--bg-color);
+            padding: 10px;
+            border: 1px solid var(--neon-blue);
+            margin-bottom: 40px;
+        }
+
+        nav a {
+            color: var(--neon-blue);
+            text-decoration: none;
+            margin-right: 20px;
+            font-weight: bold;
+        }
+
+        nav a:hover {
+            color: white;
+        }
+
+        /* Entity Icons */
+        .icon {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            margin-right: 10px;
+            vertical-align: middle;
+            position: relative;
+        }
+
+        .icon-square {
+            background: currentColor;
+            width: 16px;
+            height: 16px;
+        }
+
+        .icon-circle {
+            background: currentColor;
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+        }
+
+        .icon-diamond {
+            background: currentColor;
+            width: 14px;
+            height: 14px;
+            transform: rotate(45deg);
+            margin: 3px;
+        }
+
+        .icon-hexagon {
+            background: currentColor;
+            width: 16px;
+            height: 9px;
+            position: relative;
+            margin-top: 5.5px;
+        }
+
+        .icon-hexagon::before,
+        .icon-hexagon::after {
+            content: "";
+            position: absolute;
+            left: 0;
+            width: 0;
+            height: 0;
+            border-left: 8px solid transparent;
+            border-right: 8px solid transparent;
+        }
+
+        .icon-hexagon::before {
+            bottom: 100%;
+            border-bottom: 4.5px solid currentColor;
+        }
+
+        .icon-hexagon::after {
+            top: 100%;
+            border-top: 4.5px solid currentColor;
+        }
+
+        .icon-kite {
+            width: 0;
+            height: 0;
+            border-left: 6px solid transparent;
+            border-right: 6px solid transparent;
+            border-bottom: 12px solid currentColor;
+            position: relative;
+            margin: auto;
+        }
+
+        .icon-kite::after {
+            content: "";
+            position: absolute;
+            top: 12px;
+            left: -6px;
+            width: 0;
+            height: 0;
+            border-left: 6px solid transparent;
+            border-right: 6px solid transparent;
+            border-top: 6px solid currentColor;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>TECHNICAL REFERENCE</h1>
+    <p>Neon Defense Engine Architecture & API Reference</p>
+
+    <nav>
+        <a href="#state">STATE</a>
+        <a href="#logic">LOGIC</a>
+        <a href="#spawning">SPAWNING</a>
+        <a href="#ui">UI</a>
+        <a href="#rendering">RENDERING</a>
+    </nav>
+
+    <h2 id="state">01. ENGINE STATE</h2>
+    <div class="method">
+        <div class="method-name">resetGameLogic()</div>
+        <div class="desc">Initializes or wipes all game variables (money, lives, wave, towers) to start state.</div>
+    </div>
+    <div class="method">
+        <div class="method-name">saveGame()</div>
+        <div class="desc">Serializes the current state into <code>localStorage</code> under the key
+            <code>'neonDefenseSave'</code>.
+        </div>
+    </div>
+    <div class="method">
+        <div class="method-name">loadGame()</div>
+        <div class="desc">Parses <code>localStorage</code> and restores state, including complex objects like towers and
+            mutant definitions.</div>
+    </div>
+
+    <h2 id="logic">02. CORE LOGIC</h2>
+    <p>
+        <span class="icon" style="color: var(--neon-blue);"><span class="icon-square"></span></span>
+        <span class="icon" style="color: var(--neon-yellow);"><span class="icon-circle"></span></span>
+        <span class="icon" style="color: var(--neon-pink);"><span class="icon-diamond"></span></span>
+    </p>
+    <div class="method">
+        <div class="method-name">gameLoop(timestamp)</div>
+        <div class="desc">The primary RAF-driven loop. Orchestrates <code>update()</code> and <code>draw()</code>.</div>
+    </div>
+    <div class="method">
+        <div class="method-name">update()</div>
+        <div class="desc">Handles frame-by-frame updates for entities, physics, and timers. Runs only if game is playing
+            and not paused.</div>
+    </div>
+    <div class="method">
+        <div class="method-name">isValidPlacement(x, y, config)</div>
+        <div class="desc">Checks grid collision against paths, UI bounds, and existing towers. Returns snap coordinates.
+        </div>
+    </div>
+
+    <h2 id="spawning">03. ENEMY & PATHING</h2>
+    <p>
+        <span class="icon" style="color: #ff0000;"><span class="icon-circle"></span></span>
+        <span class="icon" style="color: #ffff00;"><span class="icon-kite"></span></span>
+        <span class="icon" style="color: #ff00ff;"><span class="icon-square"></span></span>
+        <span class="icon" style="color: #ff8800;"><span class="icon-hexagon"></span></span>
+    </p>
+    <div class="method">
+        <div class="method-name">calculatePath()</div>
+        <div class="desc">Generates the initial maze path using a randomized BFS algorithm from edge to center.</div>
+    </div>
+    <div class="method">
+        <div class="method-name">spawnEnemy()</div>
+        <div class="desc">Pops the next enemy from <code>spawnQueue</code>, scales HP by wave, and assigns a random
+            active path.</div>
+    </div>
+    <div class="method">
+        <div class="method-name">generateMutation()</div>
+        <div class="desc"><i>(Internal)</i> Logic hook for creating mutated enemy variants every 20 waves.</div>
+    </div>
+
+    <h2 id="ui">04. USER INTERFACE</h2>
+    <div class="method">
+        <div class="method-name">updateUI()</div>
+        <div class="desc">Syncs HTML elements (money, lives, timers) with the internal engine state.</div>
+    </div>
+    <div class="method">
+        <div class="method-name">updateSelectionUI()</div>
+        <div class="desc">Dynamically renders and positions the floating upgrade/sell panel near the selected entity.
+        </div>
+    </div>
+    <div class="method">
+        <div class="method-name">getRepairCost()</div>
+        <div class="desc">Returns the current price for life restoration based on lives exceeding parity.</div>
+    </div>
+
+    <h2 id="rendering">05. RENDERING PIPELINE</h2>
+    <div class="method">
+        <div class="method-name">draw()</div>
+        <div class="desc">Total canvas redraw. Applies camera transforms (pan/zoom) before drawing entities.</div>
+    </div>
+    <div class="method">
+        <div class="method-name">drawTowerOne(type, x, y, color)</div>
+        <div class="desc">Graphic primitive for drawing specific tower shapes (Square, Circle, Diamond).</div>
+    </div>
+    <div class="method">
+        <div class="method-name">drawLevelPips(tower)</div>
+        <div class="desc">Draws visual markers at the base of towers to represent upgrade level.</div>
+    </div>
+
+    <p style="text-align: center; margin-top: 100px; color: #555;">&copy; NEON DEFENSE ENGINE - FOR AUTHORIZED
+        DEVELOPERS ONLY</p>
+</body>
+
+</html>

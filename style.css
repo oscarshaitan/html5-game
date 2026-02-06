@@ -469,3 +469,41 @@ button:hover {
         font-size: 1rem;
     }
 }
+
+.menu-link {
+    display: block;
+    text-decoration: none;
+    color: var(--neon-blue);
+    margin: 10px 0;
+    font-weight: bold;
+    font-size: 0.9rem;
+    padding: 10px;
+    border: 1px solid var(--neon-blue);
+    background: rgba(0, 243, 255, 0.1);
+    text-align: center;
+}
+
+.menu-link:hover {
+    background: rgba(0, 243, 255, 0.3);
+    box-shadow: 0 0 10px var(--neon-blue);
+    color: white;
+}
+
+.start-links {
+    margin-top: 20px;
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+}
+
+.start-links a {
+    color: var(--neon-blue);
+    text-decoration: none;
+    font-size: 0.8rem;
+    letter-spacing: 1px;
+}
+
+.start-links a:hover {
+    text-shadow: 0 0 5px var(--neon-blue);
+    color: white;
+}
