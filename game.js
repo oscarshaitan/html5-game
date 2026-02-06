@@ -1123,44 +1123,47 @@ window.shareGame = async function () {
 
     try {
         // Create an offline canvas to render the full report (Game + UI Overlay)
+        const borderPadding = 150;
         const offCanvas = document.createElement('canvas');
-        offCanvas.width = canvas.width;
-        offCanvas.height = canvas.height;
+        offCanvas.width = canvas.width + (borderPadding * 2);
+        offCanvas.height = canvas.height + (borderPadding * 2);
         const octx = offCanvas.getContext('2d');
 
-        // Draw the main game canvas onto the offline canvas
-        octx.drawImage(canvas, 0, 0);
+        // Fill background
+        octx.fillStyle = '#050510';
+        octx.fillRect(0, 0, offCanvas.width, offCanvas.height);
+
+        // Draw the main game canvas onto the offline canvas with padding
+        octx.drawImage(canvas, borderPadding, borderPadding);
 
         // --- Render HUD Overlay onto the Screenshot ---
-        const padding = 20;
+        const padding = 20 + borderPadding;
         const bannerHeight = 85;
+        const textOffset = 75;
 
-        // Semi-transparent banner at the top
-        octx.fillStyle = 'rgba(5, 5, 16, 0.9)';
-        octx.fillRect(0, 0, offCanvas.width, bannerHeight);
-        octx.strokeStyle = '#00f3ff';
-        octx.lineWidth = 2;
-        octx.strokeRect(0, 0, offCanvas.width, bannerHeight);
+        // Fully opaque banner at the top (no border)
+        octx.fillStyle = '#050510';
+        octx.fillRect(0, 0, offCanvas.width, bannerHeight + textOffset);
 
         // Header Text
         octx.fillStyle = '#ff00ac';
         octx.font = 'bold 16px Orbitron, sans-serif';
         octx.textAlign = 'left';
-        octx.fillText('NEON DEFENSE - COMMANDER REPORT', padding, 25);
+        octx.fillText('NEON DEFENSE - COMMANDER REPORT', padding, 25 + textOffset);
 
         // Commander Name
         octx.fillStyle = '#00f3ff';
         octx.font = 'bold 22px Orbitron, sans-serif';
-        octx.fillText(`COMMANDER: ${playerName || "UNIDENTIFIED"}`, padding, 55);
+        octx.fillText(`COMMANDER: ${playerName || "UNIDENTIFIED"}`, padding, 55 + textOffset);
 
         // Wave & Credits (Right Aligned)
         octx.textAlign = 'right';
         octx.font = 'bold 18px Orbitron, sans-serif';
         octx.fillStyle = '#fcee0a';
-        octx.fillText(`WAVE: ${wave}  |  CREDITS: $${money}`, offCanvas.width - padding, 35);
+        octx.fillText(`WAVE: ${wave}  |  CREDITS: $${money}`, offCanvas.width - padding, 45 + textOffset);
 
-        octx.fillStyle = '#00ff41';
-        octx.fillText(`HQ LVL: ${baseLevel + 1}`, offCanvas.width - padding, 60);
+        // --- Render Panels ---
+        const panelWidth = 220;
 
         // 1. ELIMINATIONS PANEL
         const elimHeight = 250;
@@ -1204,6 +1207,49 @@ window.shareGame = async function () {
                 y += 22;
             }
         }
+
+        // 2. TOWERS PANEL
+        const towerHeight = 140;
+        const tx = padding;
+        const ty = bannerHeight + padding;
+        octx.fillStyle = 'rgba(5, 5, 16, 0.95)';
+        octx.fillRect(tx, ty, panelWidth, towerHeight);
+        octx.strokeStyle = '#00f3ff';
+        octx.strokeRect(tx, ty, panelWidth, towerHeight);
+
+        octx.fillStyle = '#00f3ff';
+        octx.font = 'bold 14px Orbitron, sans-serif';
+        octx.fillText('DEFENSE GRID', tx + 10, ty + 25);
+
+        // Core Tower Stats
+        octx.font = '11px Orbitron, sans-serif';
+        octx.fillStyle = '#00ff41';
+        octx.fillText(`CORE: LVL ${baseLevel + 1} | ${lives} LIVES`, tx + 10, ty + 45);
+
+        let ty_off = ty + 70;
+        ['basic', 'rapid', 'sniper'].forEach(type => {
+            const config = TOWERS[type];
+            const typeTowers = towers.filter(t => t.type === type);
+            const avgLevel = typeTowers.length > 0 ? Math.round(typeTowers.reduce((sum, t) => sum + t.level, 0) / typeTowers.length) : 0;
+
+            const ix = tx + 20;
+            const iy = ty_off - 5;
+
+            octx.fillStyle = config.color;
+            octx.beginPath();
+            if (type === 'basic') octx.rect(ix - 6, iy - 6, 12, 12);
+            else if (type === 'rapid') octx.arc(ix, iy, 6, 0, Math.PI * 2);
+            else { octx.save(); octx.translate(ix, iy); octx.rotate(Math.PI / 4); octx.rect(-6, -6, 12, 12); octx.restore(); }
+            octx.fill();
+
+            octx.font = '11px Orbitron, sans-serif';
+            octx.fillStyle = '#fff';
+            octx.fillText(type.toUpperCase(), ix + 15, ty_off);
+            octx.textAlign = 'right';
+            octx.fillText(`${typeTowers.length} (L${avgLevel})`, tx + panelWidth - 15, ty_off);
+            octx.textAlign = 'left';
+            ty_off += 22;
+        });
 
         // Stylized watermark/border at the bottom
         octx.strokeStyle = '#00f3ff';
