@@ -20,6 +20,7 @@
                 <div class="stat">LIVES: <span id="lives-display">20</span></div>
                 <div class="stat highlight">CREDITS: <span id="money-display">100</span></div>
                 <div class="stat" id="enemy-info">ENEMIES: 0</div>
+                <button id="mute-btn-hud" class="mute-btn" onclick="toggleMute()">SOUND: ON</button>
                 <button id="pause-btn" onclick="togglePause()">II</button>
             </div>
 
@@ -78,6 +79,7 @@
                     <button onclick="saveGame()">FORCE SAVE</button>
                     <a href="manual.html" target="_blank" class="menu-link">PLAYER MANUAL</a>
                     <a href="technical_docs.html" target="_blank" class="menu-link">TECH SPECS</a>
+                    <button id="mute-btn-pause" onclick="toggleMute()">SOUND: ON</button>
                     <button onclick="fullReset()">RESET DATA</button>
                 </div>
             </div>

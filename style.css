@@ -110,6 +110,49 @@ canvas {
 }
 
 .enemy-icon-small {
+    width: 12px;
+    height: 12px;
+    border: 1px solid;
+    display: inline-block;
+}
+
+.icon-basic {
+    border-color: #ff0000;
+    background: #ff0000;
+    box-shadow: 0 0 5px #ff0000;
+}
+
+.icon-fast {
+    border-color: #ffff00;
+    background: #ffff00;
+    box-shadow: 0 0 5px #ffff00;
+    border-radius: 50%;
+}
+
+.icon-tank {
+    border-color: #ff00ff;
+    background: #ff00ff;
+    box-shadow: 0 0 5px #ff00ff;
+}
+
+.icon-boss {
+    border-color: #ff8800;
+    background: #ff8800;
+    box-shadow: 0 0 8px #ff8800;
+    width: 16px;
+    height: 16px;
+}
+
+.icon-mutant {
+    border-color: #fff;
+    background: #fff;
+    box-shadow: 0 0 8px #fff;
+    width: 10px;
+    height: 10px;
+    transform: rotate(45deg);
+}
+
+.enemy-icon-small {
     width: 14px;
     height: 14px;
     box-shadow: 0 0 5px currentColor;

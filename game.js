@@ -532,9 +532,24 @@ window.fullReset = function () {
     location.reload();
 };
 
+window.togglePause = function () {
+    AudioEngine.init();
+    if (gameState !== 'playing') return;
+    isPaused = !isPaused;
+
+    const menu = document.getElementById('pause-menu');
+    if (isPaused) {
+        menu.classList.remove('hidden');
+    } else {
+        menu.classList.add('hidden');
+    }
+};
+
 window.toggleMute = function () {
     const muted = AudioEngine.toggleMute();
-    document.getElementById('mute-btn').innerText = `SOUND: ${muted ? 'OFF' : 'ON'}`;
+    const text = `SOUND: ${muted ? 'OFF' : 'ON'}`;
+    if (document.getElementById('mute-btn-hud')) document.getElementById('mute-btn-hud').innerText = text;
+    if (document.getElementById('mute-btn-pause')) document.getElementById('mute-btn-pause').innerText = text;
 };
 
 window.saveGame = function () {
@@ -736,6 +751,16 @@ function startWave() {
         // Insert boss at random position
         const randomIndex = Math.floor(Math.random() * (spawnQueue.length + 1));
         spawnQueue.splice(randomIndex, 0, 'boss');
+    }
+
+    // Surprise Boss every 5 waves after 50
+    if (wave > 50 && wave % 5 === 0 && wave % 10 !== 0) {
+        if (Math.random() < 0.25) { // 25% chance
+            console.log("!!! SURPRISE BOSS DETECTED !!!");
+            const randomIndex = Math.floor(Math.random() * (spawnQueue.length + 1));
+            spawnQueue.splice(randomIndex, 0, 'boss');
+            AudioEngine.playSFX('hit'); // Alert sound
+        }
     }
 
 
@@ -1465,13 +1490,20 @@ function updateUI() {
     let typeText = '';
 
     if (isWaveActive && count > 0) {
-        const counts = {};
+        const counts = { BASIC: 0, FAST: 0, TANK: 0, BOSS: 0, MUTANT: 0 };
+
         // Count queue
-        for (const t of spawnQueue) counts[t.toUpperCase()] = (counts[t.toUpperCase()] || 0) + 1;
+        for (const t of spawnQueue) {
+            const up = t.toUpperCase();
+            if (t.startsWith('mutant_')) counts.MUTANT++;
+            else if (counts[up] !== undefined) counts[up]++;
+        }
+
         // Count active
         for (const e of enemies) {
-            const t = e.type.toUpperCase();
-            counts[t] = (counts[t] || 0) + 1;
+            const up = (e.type || 'basic').toUpperCase();
+            if (e.isMutant) counts.MUTANT++;
+            else if (counts[up] !== undefined) counts[up]++;
         }
 
         let html = '';
@@ -1479,6 +1511,7 @@ function updateUI() {
         if (counts['FAST']) html += `<div class="enemy-count-group"><div class="enemy-icon-small icon-fast"></div>${counts['FAST']}</div>`;
         if (counts['TANK']) html += `<div class="enemy-count-group"><div class="enemy-icon-small icon-tank"></div>${counts['TANK']}</div>`;
         if (counts['BOSS']) html += `<div class="enemy-count-group"><div class="enemy-icon-small icon-boss"></div>${counts['BOSS']}</div>`;
+        if (counts['MUTANT']) html += `<div class="enemy-count-group"><div class="enemy-icon-small icon-mutant"></div>${counts['MUTANT']}</div>`;
 
         document.getElementById('enemy-info').innerHTML = html;
     } else {
