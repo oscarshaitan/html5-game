@@ -13,7 +13,13 @@
     padding: 0;
     user-select: none;
     -webkit-user-select: none;
-    touch-action: none;
+}
+
+input,
+textarea {
+    user-select: auto !important;
+    -webkit-user-select: auto !important;
+    pointer-events: auto !important;
 }
 
 body {
@@ -855,6 +861,31 @@ button:hover {
 }
 
 /* Debug Menu Styles */
+#debug-security {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 15px 0;
+    padding: 10px;
+    border: 1px dashed #333;
+    border-radius: 4px;
+}
+
+#debug-pass {
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid var(--neon-blue);
+    color: var(--neon-blue);
+    padding: 8px;
+    font-family: 'Source Code Pro', monospace;
+    text-align: center;
+    font-size: 0.8rem;
+    outline: none;
+}
+
+#debug-pass:focus {
+    box-shadow: 0 0 10px var(--neon-blue);
+}
+
 .debug-menu {
     border: 1px dashed var(--neon-yellow);
     padding: 15px;
@@ -907,4 +938,75 @@ button:hover {
     background: var(--neon-blue);
     color: black;
     box-shadow: 0 0 10px var(--neon-blue);
+}
+
+/* --- Name Entry Modal / Dialog --- */
+#name-entry-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.95);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    pointer-events: auto !important;
+    /* CRITICAL: Override ui-layer */
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+
+#name-entry-modal .modal-content {
+    background: #050510;
+    border: 2px solid #00f3ff;
+    padding: 40px;
+    text-align: center;
+    box-shadow: 0 0 50px rgba(0, 243, 255, 0.4);
+    max-width: 450px;
+    width: 90%;
+    pointer-events: auto !important;
+}
+
+#name-entry-modal h2 {
+    color: #00f3ff;
+    margin-bottom: 15px;
+    text-shadow: 0 0 10px #00f3ff;
+    letter-spacing: 3px;
+    font-size: 1.5rem;
+}
+
+#name-entry-modal p {
+    color: #fff;
+    font-size: 0.9rem;
+    margin-bottom: 30px;
+    opacity: 0.8;
+}
+
+#player-name-input {
+    width: 100%;
+    background: #000;
+    border: 1px solid #00f3ff;
+    color: #fff !important;
+    padding: 15px;
+    font-family: 'Orbitron', sans-serif;
+    text-align: center;
+    margin-bottom: 30px;
+    font-size: 1.2rem;
+    box-shadow: inset 0 0 10px rgba(0, 243, 255, 0.1);
+    pointer-events: auto !important;
+}
+
+#player-name-input:focus {
+    border-color: #ff00ac;
+    outline: none;
+    box-shadow: 0 0 20px rgba(255, 0, 172, 0.5);
+}
+
+#name-entry-modal button {
+    width: 100%;
+    font-size: 1.1rem;
+    padding: 15px;
+    pointer-events: auto !important;
 }

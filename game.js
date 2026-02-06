@@ -18,6 +18,30 @@ window.addDebugMoney = function () {
     saveGame();
 }
 
+window.unlockDebug = async function () {
+    const input = document.getElementById('debug-pass').value;
+    const msgUint8 = new TextEncoder().encode(input);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+    // Salted/Persistent protection check
+    if (hashHex === 'fb6225b8f9f677c00f1d357d91d98dd74fcc5441ea4c9f270796eb34a6522126') {
+        document.getElementById('debug-security').classList.add('hidden');
+        document.getElementById('command-center').classList.remove('hidden');
+    } else {
+        // Feedback on failure
+        const btn = document.querySelector('#debug-security button');
+        const oldText = btn.innerText;
+        btn.innerText = "ACCESS DENIED";
+        btn.style.borderColor = "#ff0000";
+        setTimeout(() => {
+            btn.innerText = oldText;
+            btn.style.borderColor = "";
+        }, 1000);
+    }
+}
+
 const ENEMIES = {
     basic: { hp: 30, speed: 1.5, color: '#ff0000', reward: 10, width: 20 },
     fast: { hp: 20, speed: 2.5, color: '#ffff00', reward: 15, width: 16 },
@@ -64,12 +88,26 @@ let mouseX = 0;
 let mouseY = 0;
 let isHovering = false;
 
+// --- VFX State ---
+let shakeAmount = 0;
+let lightSources = []; // {x, y, radius, color, life}
+
+function startShake(amt) {
+    shakeAmount = Math.max(shakeAmount, amt);
+}
+
 // --- Wave State ---
 let isWaveActive = false;
+
+// --- Player Profile & Stats ---
+let playerName = null;
+let totalKills = {
+    basic: 0, fast: 0, tank: 0, boss: 0, splitter: 0, mini: 0, bulwark: 0, shifter: 0
+};
 let prepTimer = 30; // seconds
 let frameCount = 0;
 let energy = 0;
-let maxEnergy = 100;
+const maxEnergy = 100;
 let targetingAbility = null; // 'emp' or null
 let abilities = {
     emp: { cost: 40, radius: 120, duration: 5 * 60, cooldown: 0, maxCooldown: 15 }, // duration in frames
@@ -846,6 +884,7 @@ function useAbility(type, target) {
                 e.frozenTimer = ability.duration;
             }
         });
+        lightSources.push({ x: target.x, y: target.y, radius: 250, color: '#00f3ff', life: 2.0 });
     } else if (type === 'overclock') {
         // Overclock a specific tower
         createParticles(target.x, target.y, '#fcee0a', 15);
@@ -954,7 +993,8 @@ window.saveGame = function () {
             damage: t.damage, range: t.range, cooldown: t.cooldown, maxCooldown: t.maxCooldown,
             color: t.color, cost: t.cost, totalCost: t.totalCost
         })),
-        baseLevel, baseCooldown, energy
+        baseLevel, baseCooldown, energy,
+        playerName, totalKills
     };
 
     localStorage.setItem('neonDefenseSave', JSON.stringify(data));
@@ -986,12 +1026,14 @@ window.loadGame = function () {
     baseLevel = data.baseLevel || 0;
     baseCooldown = data.baseCooldown || 0;
     energy = data.energy || 0;
+    playerName = data.playerName || null;
+    totalKills = data.totalKills || { basic: 0, fast: 0, tank: 0, boss: 0, splitter: 0, mini: 0, bulwark: 0, shifter: 0 };
 
     // Restore towers
-    towers = data.towers.map(t => ({
+    towers = (data.towers || []).map(t => ({
         ...t,
-        cooldown: t.cooldown || 0, // Ensure cooldown is set
-        maxCooldown: t.maxCooldown || t.cooldown // Ensure maxCooldown is set, fallback to current cooldown if not saved
+        cooldown: t.cooldown || 0,
+        maxCooldown: t.maxCooldown || t.cooldown || 30
     }));
 
     // Reset transient state
@@ -1000,10 +1042,20 @@ window.loadGame = function () {
     particles = [];
     selectedPlacedTower = null;
     selectedTowerType = null;
-    selectedBase = false; // Ensure base is not selected on load
+    selectedBase = false;
 
+    playerName = data.playerName || null;
+
+    // Hide start screen immediately when loading
     document.getElementById('start-screen').classList.add('hidden');
-    gameState = 'playing';
+
+    if (!playerName) {
+        document.getElementById('name-entry-modal').classList.remove('hidden');
+        // gameState will be set in savePlayerName
+    } else {
+        gameState = 'playing';
+        AudioEngine.init(); // Init audio on continue click
+    }
 
     // Initialize audio sliders
     if (document.getElementById('music-slider')) document.getElementById('music-slider').value = AudioEngine.musicVol;
@@ -1022,6 +1074,77 @@ window.loadGame = function () {
         document.getElementById('skip-btn').style.display = 'block';
     }
     updateUI();
+};
+
+function checkPlayerName() {
+    if (!playerName) {
+        document.getElementById('name-entry-modal').classList.remove('hidden');
+    } else {
+        startGame();
+    }
+}
+
+function savePlayerName() {
+    const input = document.getElementById('player-name-input').value.trim();
+    if (input) {
+        playerName = input;
+        document.getElementById('name-entry-modal').classList.add('hidden');
+        saveGame();
+
+        // If we were loading, start the game loop for real
+        if (gameState === 'playing' || document.getElementById('start-screen').classList.contains('hidden')) {
+            // Already in a game or start screen hidden, just resume
+            // (Actually loadGame hasn't hidden start screen yet if name was missing)
+        }
+
+        // Standard start/resume path
+        document.getElementById('start-screen').classList.add('hidden');
+        gameState = 'playing';
+        AudioEngine.init(); // Init audio on name confirm click
+        updateUI();
+    }
+}
+
+window.checkPlayerName = checkPlayerName;
+window.savePlayerName = savePlayerName;
+
+window.shareGame = async function () {
+    // Generate Stats Text
+    let killSummary = "";
+    for (let type in totalKills) {
+        if (totalKills[type] > 0) {
+            killSummary += `\n- ${type.toUpperCase()}: ${totalKills[type]}`;
+        }
+    }
+
+    const shareText = `[NEON DEFENSE STATUS REPORT]\nCommander: ${playerName || "Unknown"}\nSector reached: WAVE ${wave}\nCredits secured: ${money}\nConfirmed Eliminations: ${killSummary}\n\nJoin the defense!`;
+
+    try {
+        // Capture Snapshot
+        const snapshot = canvas.toDataURL('image/png');
+
+        // Check Web Share API
+        if (navigator.share) {
+            // Some browsers require a file for image sharing
+            const blob = await (await fetch(snapshot)).blob();
+            const file = new File([blob], 'neon_defense_status.png', { type: 'image/png' });
+
+            await navigator.share({
+                title: 'Neon Defense Status Report',
+                text: shareText,
+                files: [file]
+            });
+        } else {
+            // Fallback: Copy text and open image
+            await navigator.clipboard.writeText(shareText);
+            alert("Status report copied to clipboard! Opening snapshot...");
+            const win = window.open();
+            win.document.write(`<img src="${snapshot}" style="max-width:100%; height:auto;">`);
+        }
+    } catch (err) {
+        console.error("Sharing failed:", err);
+        alert("Transmission interrupted. Check logs.");
+    }
 };
 
 function resetGameLogic() {
@@ -1746,6 +1869,12 @@ function update() {
         document.getElementById('game-over-screen').classList.remove('hidden');
     }
 
+    // Update light sources
+    for (let i = lightSources.length - 1; i >= 0; i--) {
+        lightSources[i].life -= 0.1;
+        if (lightSources[i].life <= 0) lightSources.splice(i, 1);
+    }
+
     // Update music state based on bosses/mutants
     AudioEngine.updateMusic();
 }
@@ -1787,7 +1916,7 @@ function spawnEnemy() {
         isMutant = true;
     }
 
-    enemies.push({
+    const e = {
         ...config,
         name: name,
         maxHp: hp,
@@ -1804,7 +1933,13 @@ function spawnEnemy() {
         mutationKey: mutation ? mutation.key : null,
         frozen: 0,
         type: enemyType // Store the type for drawing/logic
-    });
+    };
+
+    if (enemyType === 'boss') {
+        lightSources.push({ x: e.x, y: e.y, radius: 150, color: '#ff8800', life: 2.0 });
+    }
+
+    enemies.push(e);
 }
 
 function spawnSubUnits(parent) {
@@ -1893,6 +2028,7 @@ function updateEnemies() {
         if (!target) {
             // Reached end
             lives--;
+            startShake(20);
             AudioEngine.playSFX('hit');
             updateUI();
             enemies.splice(i, 1);
@@ -1911,6 +2047,7 @@ function updateEnemies() {
             e.x += (dx / dist) * e.speed;
             e.y += (dy / dist) * e.speed;
         }
+
 
         // Bulwark pulsing visuals
         if (e.type === 'bulwark' && frameCount % 30 === 0) {
@@ -2026,6 +2163,8 @@ function shoot(tower, target) {
         damage: tower.damage,
         color: tower.color
     });
+    // Muzzle Flash
+    lightSources.push({ x: tower.x, y: tower.y, radius: 40, color: tower.color, life: 1.0 });
     AudioEngine.playSFX('shoot');
 }
 
@@ -2056,7 +2195,7 @@ function updateProjectiles() {
 }
 
 function hitEnemy(enemy, damage) {
-    if (enemy.frozen) damage *= 1.2; // Frozen enemies take 20% more damage? Optional buff
+    if (enemy.frozen) damage *= 1.2;
     enemy.hp -= damage;
     if (enemy.hp <= 0) {
         const index = enemies.indexOf(enemy);
@@ -2064,10 +2203,17 @@ function hitEnemy(enemy, damage) {
             enemies.splice(index, 1);
             money += enemy.reward;
 
+            // Track Lifetime Kills
+            if (totalKills[enemy.type] !== undefined) {
+                totalKills[enemy.type]++;
+            }
+
             // Gain Energy
             energy = Math.min(maxEnergy, energy + 1);
 
             createParticles(enemy.x, enemy.y, enemy.color, 8);
+            lightSources.push({ x: enemy.x, y: enemy.y, radius: 60, color: enemy.color, life: 1.0 });
+
             AudioEngine.playSFX('explosion');
 
             // Splitter Logic
@@ -2192,13 +2338,21 @@ function updateUI() {
 // --- Rendering ---
 
 function draw() {
-    // Clear Background (Fill whole canvas regardless of camera)
+    // Update Screen Shake
+    if (shakeAmount > 0) {
+        shakeAmount *= 0.9; // Decay
+        if (shakeAmount < 0.1) shakeAmount = 0;
+    }
+
+    // Clear Background
     ctx.fillStyle = CANVAS_BG;
     ctx.fillRect(0, 0, width, height);
 
     ctx.save();
-    // Apply Camera
-    ctx.translate(camera.x, camera.y);
+    // Apply Camera + Shake
+    const sx = (Math.random() - 0.5) * shakeAmount;
+    const sy = (Math.random() - 0.5) * shakeAmount;
+    ctx.translate(camera.x + sx, camera.y + sy);
     ctx.scale(camera.zoom, camera.zoom);
 
     // Draw Grid (Infinite feel? Or just huge?)
@@ -2400,6 +2554,7 @@ function draw() {
         ctx.stroke();
         ctx.setLineDash([]);
     }
+
 
     // Draw Enemies
     for (let e of enemies) {
@@ -2614,8 +2769,23 @@ function draw() {
         }
     });
 
-    ctx.restore(); // Restore from camera transform
+    // --- Dynamic Lighting Rendering ---
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    for (const light of lightSources) {
+        const gradient = ctx.createRadialGradient(light.x, light.y, 0, light.x, light.y, light.radius);
+        gradient.addColorStop(0, light.color);
+        gradient.addColorStop(1, 'rgba(0,0,0,0)');
 
+        ctx.globalAlpha = light.life * 0.5;
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(light.x, light.y, light.radius, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.restore();
+
+    ctx.restore(); // Restore from camera transform
     ctx.shadowBlur = 0;
 }
 

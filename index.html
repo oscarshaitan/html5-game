@@ -92,6 +92,7 @@
             <div id="game-over-screen" class="hidden">
                 <h1>SYSTEM FAILURE</h1>
                 <p>SECTOR OVERRUN</p>
+                <button onclick="shareGame()" class="share-btn">SHARE STATUS</button>
                 <button onclick="resetGame()">REBOOT SYSTEM</button>
             </div>
 
@@ -144,7 +145,12 @@
                         <button id="master-mute-btn" onclick="toggleMute()">SOUND: ON</button>
                     </div>
 
-                    <div class="debug-menu">
+                    <div id="debug-security">
+                        <input type="password" id="debug-pass" placeholder="ACCESS CODE">
+                        <button onclick="unlockDebug()">UNLOCK COMMAND CENTER</button>
+                    </div>
+
+                    <div class="debug-menu hidden" id="command-center">
                         <h3>COMMAND CENTER</h3>
                         <button class="debug-btn money-btn" onclick="addDebugMoney()">+1M CREDITS</button>
                         <div class="debug-spawn-grid">
@@ -158,6 +164,7 @@
                         </div>
                     </div>
 
+                    <button onclick="shareGame()" class="share-btn">SHARE STATUS</button>
                     <button onclick="fullReset()">RESET DATA</button>
                 </div>
             </div>
@@ -165,10 +172,19 @@
             <div id="start-screen">
                 <h1>NEON DEFENSE</h1>
                 <p>PROTECT THE CORE</p>
-                <button onclick="startGame()">INITIATE</button>
+                <button onclick="checkPlayerName()">INITIATE</button>
                 <div class="start-links">
                     <a href="manual.html" target="_blank">MANUAL</a>
                     <a href="technical_docs.html" target="_blank">TECHNICAL</a>
+                </div>
+            </div>
+
+            <div id="name-entry-modal" class="hidden">
+                <div class="modal-content">
+                    <h2>IDENTIFY YOURSELF</h2>
+                    <p>ENTER COMMANDER NAME</p>
+                    <input type="text" id="player-name-input" placeholder="NAME" maxlength="15">
+                    <button onclick="savePlayerName()">CONFIRM IDENTITY</button>
                 </div>
             </div>
         </div>
