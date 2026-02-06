@@ -278,17 +278,31 @@ function selectBase() {
     selectedBase = true;
     selectedPlacedTower = null;
     selectedTowerType = null;
+    // Clear any potential "ghost" selection from UI
     document.querySelectorAll('.tower-selector').forEach(el => el.classList.remove('selected'));
 
     updateSelectionUI();
 }
 
 // Global functions for Base UI
+// Calculate dynamic repair cost: $50 base, +$25 for each life bought beyond 20
+window.getRepairCost = function () {
+    const baseline = 20;
+    if (lives < baseline) return 50;
+    return 50 + (lives - baseline + 1) * 25;
+};
+
 window.repairBase = function () {
-    if (money >= 50) {
-        money -= 50;
+    const cost = getRepairCost();
+    if (money >= cost) {
+        money -= cost;
         lives++;
-        createParticles(width / 2, height / 2, '#00ff41', 20); // Green heal
+        // Use base world coordinates for particles
+        const cols = Math.floor(width / GRID_SIZE);
+        const rows = Math.floor(height / GRID_SIZE);
+        const baseX = Math.floor(cols / 2) * GRID_SIZE + GRID_SIZE / 2;
+        const baseY = Math.floor(rows / 2) * GRID_SIZE + GRID_SIZE / 2;
+        createParticles(baseX, baseY, '#00ff41', 20); // Green heal
         updateUI();
         updateSelectionUI(); // Update buttons just in case
     }
@@ -298,10 +312,15 @@ window.upgradeBase = function () {
     // Cost: 200 * (level + 1)
     const cost = 200 * (baseLevel + 1);
 
-    if (money >= cost && baseLevel < 3) {
+    if (money >= cost && baseLevel < 10) {
         money -= cost;
         baseLevel++;
-        createParticles(width / 2, height / 2, '#00f3ff', 30); // Blue upgrade
+        // Use base world coordinates for particles
+        const cols = Math.floor(width / GRID_SIZE);
+        const rows = Math.floor(height / GRID_SIZE);
+        const baseX = Math.floor(cols / 2) * GRID_SIZE + GRID_SIZE / 2;
+        const baseY = Math.floor(rows / 2) * GRID_SIZE + GRID_SIZE / 2;
+        createParticles(baseX, baseY, '#00f3ff', 30); // Blue upgrade
         updateUI();
         updateSelectionUI();
     }
@@ -525,11 +544,15 @@ function startPrepPhase() {
     document.getElementById('skip-btn').style.display = 'block';
     document.getElementById('wave-display').innerText = wave; // Show incoming wave number
 
-    // New Path Every 10 Waves (After Boss Loop)
-    // Happens during PREP phase logic now
-    // Boss spawns at 10, 20, 30... so new path spawn at 11, 21, 31...
-    if (wave > 1 && (wave - 1) % 10 === 0) {
-        generateNewPath();
+    // New Path Generation
+    // Up to Wave 50: Every 10 waves (11, 21, 31, 41, 51)
+    // After Wave 50: Every 5 waves (56, 61, 66...)
+    if (wave > 1) {
+        if (wave <= 50) {
+            if ((wave - 1) % 10 === 0) generateNewPath();
+        } else {
+            if ((wave - 1) % 5 === 0) generateNewPath();
+        }
     }
 }
 
@@ -846,35 +869,39 @@ function updateSelectionUI() {
     if (selectedBase) {
         panel.classList.remove('hidden');
         panel.innerHTML = `
-            <h3>CORE BASE</h3>
+            <h3>HOME</h3>
             <div style="margin-bottom: 8px; font-size: 0.9rem; color: #aaa;">The Heart of Defense</div>
-            <div class="stats">Level: <span class="highlight">${baseLevel}/3</span></div>
-            ${baseLevel > 0 ? `<div class="stat-row"><span>Damage</span> <span>${baseDamage + (baseLevel - 1) * 10}</span></div>` : ''}
+            <div class="stats">Level: <span class="highlight">${baseLevel}/10</span></div>
+            ${baseLevel > 0 ? `
+                <div class="stat-row"><span>Damage</span> <span>${baseDamage + (baseLevel - 1) * 10}</span></div>
+                <div class="stat-row"><span>Range</span> <span>${baseRange + (baseLevel - 1) * 30}</span></div>
+            ` : ''}
             
             <hr style="border: 0; border-top: 1px solid #444; margin: 10px 0;">
             
-            <!-- Repair -->
-            <button onclick="repairBase()" class="action-btn" style="background: rgba(0, 255, 65, 0.2); border: 1px solid #00ff41; color: #00ff41; width: 100%; margin-bottom: 5px;">
-                REPAIR (+1 Life) <span style="float:right;">$50</span>
-            </button>
-            
-            <!-- Upgrade -->
-            ${baseLevel < 3 ? `
-            <button onclick="upgradeBase()" class="action-btn" style="background: rgba(0, 243, 255, 0.2); border: 1px solid #00f3ff; color: #00f3ff; width: 100%;">
-                ${baseLevel === 0 ? 'INSTALL TURRET' : 'UPGRADE TURRET'} <span style="float:right;">$${200 * (baseLevel + 1)}</span>
-            </button>
-            ` : '<div style="color: #666; text-align: center; margin-top: 5px;">MAX LEVEL</div>'}
+            <div class="actions">
+                <!-- Repair -->
+                <button onclick="repairBase()" class="action-btn" style="background: rgba(0, 255, 65, 0.2); border: 1px solid #00ff41; color: #00ff41; width: 100%; margin-bottom: 5px;">
+                    REPAIR (+1 Life) <span style="float:right;">$${getRepairCost()}</span>
+                </button>
+                
+                <!-- Upgrade -->
+                ${baseLevel < 10 ? `
+                <button onclick="upgradeBase()" class="action-btn" style="background: rgba(0, 243, 255, 0.2); border: 1px solid #00f3ff; color: #00f3ff; width: 100%;">
+                    ${baseLevel === 0 ? 'INSTALL TURRET' : 'UPGRADE TURRET'} <span style="float:right;">$${200 * (baseLevel + 1)}</span>
+                </button>
+                ` : '<div style="color: #666; text-align: center; margin-top: 5px;">MAX LEVEL</div>'}
+
+                <button class="action-btn close" onclick="deselectTower()" style="margin-top: 10px;">X</button>
+            </div>
         `;
 
         // Position panel near base (center)
-        // Convert world center to screen
         const cols = Math.floor(width / GRID_SIZE);
         const rows = Math.floor(height / GRID_SIZE);
         const baseX = Math.floor(cols / 2) * GRID_SIZE + GRID_SIZE / 2;
         const baseY = Math.floor(rows / 2) * GRID_SIZE + GRID_SIZE / 2;
 
-        // Manual "worldToScreen" inverse of screenToWorld basically
-        // screenX = worldX * zoom + cameraX
         const screenPos = {
             x: baseX * camera.zoom + camera.x,
             y: baseY * camera.zoom + camera.y
@@ -882,8 +909,9 @@ function updateSelectionUI() {
 
         panel.style.left = Math.min(window.innerWidth - 220, Math.max(20, screenPos.x + 50)) + 'px';
         panel.style.top = Math.min(window.innerHeight - 300, Math.max(20, screenPos.y - 100)) + 'px';
-        panel.style.bottom = 'auto'; // Release fixed bottom
-
+        panel.style.bottom = 'auto';
+        panel.style.right = 'auto'; // Reset potential CSS fixed positioning
+        panel.style.marginRight = '0';
         return;
     }
 
@@ -892,23 +920,42 @@ function updateSelectionUI() {
         return;
     }
 
-    // ... Existing Tower UI logic ...
+    // --- Render Tower Selection UI ---
     const t = selectedPlacedTower;
-
-    document.getElementById('sel-type').innerText = `Type: ${t.type.toUpperCase()}`;
-    document.getElementById('sel-level').innerText = `Level: ${t.level}`;
-    document.getElementById('sel-damage').innerText = `Damage: ${Math.floor(t.damage)}`;
-    document.getElementById('sel-range').innerText = `Range: ${Math.floor(t.range)}`;
-
-    document.getElementById('upgrade-cost').innerText = `($${getUpgradeCost(t)})`;
-    document.getElementById('sell-refund').innerText = `($${Math.floor(t.totalCost * 0.7)})`;
+    const upgradeCost = getUpgradeCost(t);
+    const refund = Math.floor(t.totalCost * 0.7);
 
     panel.classList.remove('hidden');
+    panel.innerHTML = `
+        <div id="selected-stats">
+            <h3>TOWER INFO</h3>
+            <div id="sel-type">Type: ${t.type.toUpperCase()}</div>
+            <div id="sel-level">Level: ${t.level}</div>
+            <div id="sel-damage">Damage: ${Math.floor(t.damage)}</div>
+            <div id="sel-range">Range: ${Math.floor(t.range)}</div>
+        </div>
+        <div class="actions">
+            <button class="action-btn upgrade" onclick="upgradeTower()">
+                UPGRADE <span>($${upgradeCost})</span>
+            </button>
+            <button class="action-btn sell" onclick="sellTower()">
+                SELL <span>($${refund})</span>
+            </button>
+            <button class="action-btn close" onclick="deselectTower()">X</button>
+        </div>
+    `;
 
-    // Fixed positioning handled by CSS now
-    panel.style.left = '';
-    panel.style.top = '';
-    panel.style.transform = '';
+    // Position panel near selected tower
+    const screenPos = {
+        x: t.x * camera.zoom + camera.x,
+        y: t.y * camera.zoom + camera.y
+    };
+
+    panel.style.left = Math.min(window.innerWidth - 220, Math.max(20, screenPos.x + 50)) + 'px';
+    panel.style.top = Math.min(window.innerHeight - 300, Math.max(20, screenPos.y - 100)) + 'px';
+    panel.style.bottom = 'auto';
+    panel.style.right = 'auto';
+    panel.style.marginRight = '0';
 }
 
 function isValidPlacement(x, y, towerConfig) {
@@ -1162,8 +1209,8 @@ function updateTowers() {
             // Shoot
             // Damage increases with level: 20, 30, 40
             const currentDamage = baseDamage + (baseLevel - 1) * 10;
-            // Cooldown decreases: 30, 25, 20
-            const currentCooldown = Math.max(10, 35 - baseLevel * 5);
+            // Cooldown decreases: floor at 8 (approx 7.5 shots/sec)
+            const currentCooldown = Math.max(8, 35 - baseLevel * 5);
 
             projectiles.push({
                 x: baseX,
@@ -1406,17 +1453,50 @@ function draw() {
 
     // Base Turret Visuals (if level > 0)
     if (baseLevel > 0) {
+        // Distinct Look: Hexagon Forcefield + Drones
+        const time = Date.now() / 800;
+
+        // Draw Hexagon Shield - Multiple layers based on level
+        const shieldLayers = Math.max(1, Math.floor(baseLevel / 3));
+        for (let j = 0; j < shieldLayers; j++) {
+            ctx.strokeStyle = '#00ff41';
+            ctx.lineWidth = 1.5;
+            ctx.globalAlpha = 0.3 + (j * 0.2);
+            ctx.beginPath();
+            const radius = 22 + (j * 4);
+            for (let i = 0; i < 6; i++) {
+                const angle = (Math.PI / 3) * i + time * (j % 2 === 0 ? 1 : -1);
+                const hx = base.x + Math.cos(angle) * radius;
+                const hy = base.y + Math.sin(angle) * radius;
+                if (i === 0) ctx.moveTo(hx, hy);
+                else ctx.lineTo(hx, hy);
+            }
+            ctx.closePath();
+            ctx.stroke();
+        }
+        ctx.globalAlpha = 1.0;
+
+        // Orbiting Defense Drones
         ctx.fillStyle = '#fff';
-        // Orbiting satellites?
-        const count = baseLevel;
-        const time = Date.now() / 500;
-        for (let i = 0; i < count; i++) {
-            const angle = time + (i * (Math.PI * 2 / count));
-            const ox = base.x + Math.cos(angle) * 25;
-            const oy = base.y + Math.sin(angle) * 25;
+        const droneCount = baseLevel;
+        for (let i = 0; i < droneCount; i++) {
+            // Distribute drones in two orbits if many
+            const orbitIndex = i < 5 ? 0 : 1;
+            const orbitCount = i < 5 ? Math.min(droneCount, 5) : droneCount - 5;
+            const orbitPos = i < 5 ? i : i - 5;
+
+            const radius = orbitIndex === 0 ? 32 : 45;
+            const orbitTime = orbitIndex === 0 ? time * 2 : -time * 1.5;
+
+            const angle = orbitTime + (orbitPos * (Math.PI * 2 / orbitCount));
+            const ox = base.x + Math.cos(angle) * radius;
+            const oy = base.y + Math.sin(angle) * radius;
 
             ctx.beginPath();
-            ctx.arc(ox, oy, 4, 0, Math.PI * 2);
+            // Drone shape (triangle)
+            ctx.moveTo(ox + Math.cos(angle) * 5, oy + Math.sin(angle) * 5);
+            ctx.lineTo(ox + Math.cos(angle + 2.5) * 5, oy + Math.sin(angle + 2.5) * 5);
+            ctx.lineTo(ox + Math.cos(angle - 2.5) * 5, oy + Math.sin(angle - 2.5) * 5);
             ctx.fill();
         }
     }
