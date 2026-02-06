@@ -58,6 +58,9 @@ let isWaveActive = false;
 let prepTimer = 30; // seconds
 let frameCount = 0;
 
+let mutantTypes = []; // Keys of generated mutant enemies
+
+
 let isPaused = false;
 
 // --- Base State ---
@@ -419,7 +422,9 @@ window.saveGame = function () {
             damage: t.damage, range: t.range, cooldown: t.cooldown, maxCooldown: t.maxCooldown, // Save maxCooldown
             color: t.color, cost: t.cost, totalCost: t.totalCost
         })),
-        baseLevel, baseCooldown // Save base state
+        baseLevel, baseCooldown, // Save base state
+        mutantTypes, // Save list of mutants
+        customEnemies: mutantTypes.map(k => ({ key: k, data: ENEMIES[k] })) // Save actual definitions
     };
 
     localStorage.setItem('neonDefenseSave', JSON.stringify(data));
@@ -443,6 +448,14 @@ window.loadGame = function () {
     paths = data.paths || paths; // Load paths or keep default if missing (backward compatibility)
     baseLevel = data.baseLevel || 0; // Load base level
     baseCooldown = data.baseCooldown || 0; // Load base cooldown
+
+    // Restore Mutants
+    mutantTypes = data.mutantTypes || [];
+    if (data.customEnemies) {
+        data.customEnemies.forEach(e => {
+            ENEMIES[e.key] = e.data;
+        });
+    }
 
     // Restore towers
     towers = data.towers.map(t => ({
@@ -494,6 +507,10 @@ function resetGameLogic() {
     particles = [];
     spawnQueue = []; // Clear spawn queue on reset
 
+    // Reset mutations
+    mutantTypes.forEach(k => delete ENEMIES[k]);
+    mutantTypes = [];
+
     startPrepPhase();
     updateUI();
 }
@@ -533,11 +550,22 @@ function startWave() {
     spawnQueue = [];
     const baseCount = 5 + Math.floor(wave * 2.5); // INCREASED DIFFICULTY
 
+    // Check for Mutation (Every 20 waves)
+    if (wave % 20 === 0) {
+        generateMutation();
+    }
+
     for (let i = 0; i < baseCount; i++) {
         let type = 'basic';
         const r = Math.random();
 
-        if (wave < 3) {
+        // Include mutants in the pool if available
+        if (mutantTypes.length > 0 && r < 0.2) {
+            type = mutantTypes[Math.floor(Math.random() * mutantTypes.length)];
+        }
+        else if (wave < 3) {
+            type = 'basic';
+        } else if (wave < 5) {
             type = 'basic';
         } else if (wave < 5) {
             // Mix of basic and fast
