@@ -273,6 +273,29 @@ canvas {
     border-radius: 10px;
     border: 1px solid var(--neon-blue);
     pointer-events: auto;
+    align-items: center;
+    /* Vertically align button */
+}
+
+#recenter-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    margin-left: 10px;
+    padding: 0;
+    font-size: 1.2rem;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border: 1px solid var(--neon-blue);
+    background: rgba(0, 0, 0, 0.5);
+    color: var(--neon-blue);
+}
+
+#recenter-btn:hover {
+    background: var(--neon-blue);
+    color: black;
+    box-shadow: 0 0 10px var(--neon-blue);
 }
 
 .tower-selector {

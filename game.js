@@ -42,6 +42,12 @@ let spawnTimer = 0;
 let waveTimer = 0;
 let currentEnemyType = 'basic'; // kept for potential legacy checks but main logic uses queue
 
+// --- Camera State ---
+let camera = { x: 0, y: 0, zoom: 1 };
+let isDragging = false;
+let lastMouseX = 0;
+let lastMouseY = 0;
+
 // --- New State for Hover ---
 let mouseX = 0;
 let mouseY = 0;
@@ -62,6 +68,9 @@ window.onload = () => {
     resize();
     window.addEventListener('resize', resize);
 
+    setupInput();
+    calculatePath();
+
     // Check for save
     if (localStorage.getItem('neonDefenseSave')) {
         document.getElementById('start-screen').innerHTML = `
@@ -72,29 +81,6 @@ window.onload = () => {
             <button style="font-size: 0.8rem; padding: 10px;" onclick="fullReset()">NEW GAME</button>
         `;
     }
-
-    // Interactions
-    // Interactions
-    canvas.addEventListener('mousemove', (e) => {
-        const rect = canvas.getBoundingClientRect();
-        mouseX = e.clientX - rect.left;
-        mouseY = e.clientY - rect.top;
-        isHovering = true;
-    });
-
-    canvas.addEventListener('mouseout', () => {
-        isHovering = false;
-    });
-
-    canvas.addEventListener('mousedown', (e) => {
-        handleInput(e);
-    });
-
-    canvas.addEventListener('touchstart', (e) => {
-        e.preventDefault(); // Prevent scrolling
-        isHovering = false; // Disable hover on touch to avoid stuck ghosts
-        handleInput(e.touches[0]);
-    }, { passive: false });
 
     // Hotkeys
     window.addEventListener('keydown', (e) => {
@@ -114,6 +100,150 @@ window.onload = () => {
     // Start Loop
     requestAnimationFrame(gameLoop);
 };
+
+function setupInput() {
+    // Mouse Down (Start Drag)
+    canvas.addEventListener('mousedown', (e) => {
+        if (e.button === 0) { // Left click
+            // Check if clicking a tower (selection) vs dragging background
+            // We'll treat it as a drag candidate, if they don't move much, it's a click
+            isDragging = true;
+            lastMouseX = e.clientX;
+            lastMouseY = e.clientY;
+        }
+    });
+
+    // Mouse Move (Pan & Hover)
+    canvas.addEventListener('mousemove', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const rawMouseX = e.clientX - rect.left;
+        const rawMouseY = e.clientY - rect.top;
+
+        // Pan
+        if (isDragging) {
+            const dx = e.clientX - lastMouseX;
+            const dy = e.clientY - lastMouseY;
+            camera.x += dx;
+            camera.y += dy;
+            lastMouseX = e.clientX;
+            lastMouseY = e.clientY;
+        }
+
+        // Apply Camera Transform to Mouse for Logic
+        const worldPos = screenToWorld(rawMouseX, rawMouseY);
+        mouseX = worldPos.x;
+        mouseY = worldPos.y;
+
+        // Update isHovering based on raw mouse being on canvas
+        isHovering = true;
+    });
+
+    // Mouse Up (End Drag & Handle Click)
+    canvas.addEventListener('mouseup', (e) => {
+        if (e.button === 0) {
+            isDragging = false;
+            // If we barely moved, treat as click
+            // (Simple implementation: just always handle click if not a distinct drag action? 
+            //  For now, let's just handle click logic. If panning happens, it might click something. 
+            //  Ideally we track delta distance.)
+
+            // For now, allow click even if panned slightly, logic uses world coordinates
+            handleClick();
+        }
+    });
+
+    // Mouse Leave
+    canvas.addEventListener('mouseleave', () => {
+        isDragging = false;
+        isHovering = false;
+        selectedTowerType = null; // Hide ghost
+    });
+
+    // Wheel (Zoom)
+    canvas.addEventListener('wheel', (e) => {
+        e.preventDefault();
+
+        const zoomSpeed = 0.1;
+        const direction = e.deltaY > 0 ? -1 : 1;
+        let newZoom = camera.zoom + (direction * zoomSpeed);
+
+        // Clamp
+        newZoom = Math.max(0.5, Math.min(newZoom, 1.5));
+
+        // Zoom towards mouse pointer logic
+        const rect = canvas.getBoundingClientRect();
+        const rawMouseX = e.clientX - rect.left;
+        const rawMouseY = e.clientY - rect.top;
+
+        // World pos before zoom
+        const worldX = (rawMouseX - camera.x) / camera.zoom;
+        const worldY = (rawMouseY - camera.y) / camera.zoom;
+
+        // Update zoom
+        camera.zoom = newZoom;
+
+        // Calculate new camera.x/y such that worldPos matches rawMousePos
+        // rawMouseX = worldX * newZoom + newCameraX
+        // newCameraX = rawMouseX - (worldX * newZoom)
+        camera.x = rawMouseX - (worldX * newZoom);
+        camera.y = rawMouseY - (worldY * newZoom);
+
+    }, { passive: false });
+
+    // Touch support (Basic tap) - Touches need similar transform
+    canvas.addEventListener('touchstart', (e) => {
+        if (e.touches.length > 0) {
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.touches[0];
+            const rawX = touch.clientX - rect.left;
+            const rawY = touch.clientY - rect.top;
+
+            const worldPos = screenToWorld(rawX, rawY);
+            mouseX = worldPos.x;
+            mouseY = worldPos.y;
+
+            handleClick();
+            isHovering = false; // sticky hover on touch is annoying
+        }
+    });
+}
+
+function screenToWorld(screenX, screenY) {
+    return {
+        x: (screenX - camera.x) / camera.zoom,
+        y: (screenY - camera.y) / camera.zoom
+    };
+}
+
+function handleClick() {
+    if (gameState !== 'playing' || isPaused) return;
+
+    // Check interaction with towers
+    // Check if clicked ON a placed tower to select it
+    let clickedTower = null;
+    for (let t of towers) {
+        // Simple circle check
+        const dist = Math.hypot(t.x - mouseX, t.y - mouseY);
+        if (dist < 20) { // Approx radius
+            clickedTower = t;
+            break;
+        }
+    }
+
+    if (clickedTower) {
+        selectPlacedTower(clickedTower);
+        return;
+    }
+
+    // If not clicking a tower, attempt to BUILD if one is selected
+    if (selectedTowerType) {
+        buildTower(mouseX, mouseY);
+        return;
+    }
+
+    // If clicking on empty space (no tower, no build), deselect
+    deselectTower();
+}
 
 function resize() {
     width = canvas.width = window.innerWidth;
@@ -456,6 +586,13 @@ window.selectTower = function (type) {
     document.querySelector(`.tower-selector[data-type="${type}"]`).classList.add('selected');
 };
 
+function selectPlacedTower(tower) {
+    selectedPlacedTower = tower;
+    selectedTowerType = null; // Disable placement mode
+    document.querySelectorAll('.tower-selector').forEach(el => el.classList.remove('selected'));
+    updateSelectionUI();
+}
+
 window.deselectTower = function () {
     selectedPlacedTower = null;
     document.getElementById('selection-panel').classList.add('hidden');
@@ -529,7 +666,11 @@ function isValidPlacement(x, y, towerConfig) {
     const snap = snapToGrid(x, y);
 
     // Check UI bounds (approximate) - don't place under controls
-    if (snap.y > height - 100 || snap.y < 60) return { valid: false, reason: 'ui' };
+    // These are world coordinates, so need to convert UI bounds to world
+    const uiTopWorldY = screenToWorld(0, 60).y;
+    const uiBottomWorldY = screenToWorld(0, height - 100).y;
+
+    if (snap.y > uiBottomWorldY || snap.y < uiTopWorldY) return { valid: false, reason: 'ui' };
 
     // Check cost
     if (money < towerConfig.cost) return { valid: false, reason: 'cost' };
@@ -572,44 +713,16 @@ function isValidPlacement(x, y, towerConfig) {
     return { valid: true, snap: snap };
 }
 
-function handleInput(e) {
+function buildTower(worldX, worldY) {
     if (gameState !== 'playing') return;
 
-    let clientX, clientY;
-    if (e.clientX !== undefined) {
-        clientX = e.clientX;
-        clientY = e.clientY;
-    } else {
-        clientX = e.clientX || 0;
-        clientY = e.clientY || 0;
-    }
-
-    const rect = canvas.getBoundingClientRect();
-    const clickX = clientX - rect.left;
-    const clickY = clientY - rect.top;
-
-    // 1. Check if clicking UI (handled by DOM, but safeguard)
-
-    // 2. Check if clicking an EXISTING TOWER
-    for (let t of towers) {
-        if (Math.abs(t.x - clickX) < 20 && Math.abs(t.y - clickY) < 20) {
-            // Clicked a tower
-            selectedPlacedTower = t;
-            selectedTowerType = null; // Disable placement mode
-            document.querySelectorAll('.tower-selector').forEach(el => el.classList.remove('selected'));
-            updateSelectionUI();
-            return;
-        }
-    }
-
-    // 3. If in placement mode, try to place
     if (selectedTowerType) {
         const towerConfig = TOWERS[selectedTowerType];
-        const validation = isValidPlacement(clickX, clickY, towerConfig);
+        const validation = isValidPlacement(worldX, worldY, towerConfig);
 
         if (!validation.valid) {
             if (validation.reason === 'path' || validation.reason === 'tower') {
-                createParticles(validation.snap ? validation.snap.x : clickX, validation.snap ? validation.snap.y : clickY, '#ff0000', 5);
+                createParticles(validation.snap ? validation.snap.x : worldX, validation.snap ? validation.snap.y : worldY, '#ff0000', 5);
             }
             return;
         }
@@ -628,9 +741,6 @@ function handleInput(e) {
         createParticles(validation.snap.x, validation.snap.y, towerConfig.color, 10);
         updateUI();
         saveGame(); // Save on build
-    } else {
-        // Not placing, and didn't click tower -> Deselect
-        deselectTower();
     }
 }
 
@@ -898,11 +1008,18 @@ function updateUI() {
 // --- Rendering ---
 
 function draw() {
-    // Clear Background
+    // Clear Background (Fill whole canvas regardless of camera)
     ctx.fillStyle = CANVAS_BG;
     ctx.fillRect(0, 0, width, height);
 
-    // Draw Grid (Faint)
+    ctx.save();
+    // Apply Camera
+    ctx.translate(camera.x, camera.y);
+    ctx.scale(camera.zoom, camera.zoom);
+
+    // Draw Grid (Infinite feel? Or just huge?)
+    // Drawing just the game bounds grid for now, but extending it a bit might be nice
+    // Or just draw the normal grid, and since we pan "infinite", users see empty space outside
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -915,6 +1032,11 @@ function draw() {
         ctx.lineTo(width, y);
     }
     ctx.stroke();
+
+    // Draw World Borders (to show where grid ends)
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(0, 0, width, height);
 
     // Draw Paths
     for (let path of paths) {
@@ -1067,18 +1189,26 @@ function draw() {
     if (selectedPlacedTower) {
         ctx.beginPath();
         ctx.arc(selectedPlacedTower.x, selectedPlacedTower.y, selectedPlacedTower.range, 0, Math.PI * 2);
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+        ctx.fill();
+        ctx.strokeStyle = '#fff';
         ctx.setLineDash([5, 5]);
         ctx.stroke();
         ctx.setLineDash([]);
-
-        ctx.strokeStyle = '#fff';
         ctx.lineWidth = 2;
         ctx.strokeRect(selectedPlacedTower.x - 18, selectedPlacedTower.y - 18, 36, 36);
     }
 
+    ctx.restore(); // Restore from camera transform
+
     ctx.shadowBlur = 0;
 }
+
+window.resetCamera = function () {
+    camera.x = 0;
+    camera.y = 0;
+    camera.zoom = 1;
+};
 
 function drawTowerOne(type, x, y, color) {
     ctx.fillStyle = color;
