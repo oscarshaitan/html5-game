@@ -263,25 +263,58 @@ function snapToGrid(x, y) {
 }
 
 function calculatePath() {
-    // Generate a path that aligns with the grid
-    const w = width;
-    const h = height;
-
-    // Grid
-    const cols = width / GRID_SIZE;
-    const rows = height / GRID_SIZE;
-
-    // Initial Path (Simple winding path)
-    // Start top left, go right, down, left, down, right
     paths = [];
-    const mainPath = [];
-    mainPath.push({ x: 20, y: 20 }); // Start
-    mainPath.push({ x: width - 60, y: 20 });
-    mainPath.push({ x: width - 60, y: height / 2 });
-    mainPath.push({ x: 60, y: height / 2 });
-    mainPath.push({ x: 60, y: height - 60 });
-    mainPath.push({ x: width - 20, y: height - 60 }); // End (Base)
-    paths.push(mainPath);
+
+    // Grid dimensions
+    const cols = Math.floor(width / GRID_SIZE);
+    const rows = Math.floor(height / GRID_SIZE);
+
+    // Target: Center of map
+    const centerC = Math.floor(cols / 2);
+    const centerR = Math.floor(rows / 2);
+    const endNode = { c: centerC, r: centerR };
+
+    // Start: Random point >= 10 units away
+    let startC, startR;
+    let validStart = false;
+    let attempts = 0;
+
+    while (!validStart && attempts < 100) {
+        startC = Math.floor(Math.random() * cols);
+        startR = Math.floor(Math.random() * rows);
+
+        // Distance check
+        const dist = Math.hypot(startC - centerC, startR - centerR);
+        if (dist >= 10) {
+            // Also ensure it's not ON the center
+            if (startC !== centerC || startR !== centerR) {
+                validStart = true;
+            }
+        }
+        attempts++;
+    }
+
+    if (!validStart) {
+        // Fallback to top-left corner
+        startC = 0; startR = 0;
+    }
+
+    const startNode = { c: startC, r: startR };
+
+    // Find path
+    // Pass empty towers list since this is initial generation
+    const pathPoints = findPathOnGrid(startNode, endNode, []);
+
+    if (pathPoints && pathPoints.length > 0) {
+        paths.push(pathPoints);
+    } else {
+        // Fallback manual path if something fails
+        console.warn("Failed to generate random path, using fallback");
+        const fallbackPath = [];
+        fallbackPath.push({ x: 20, y: 20 });
+        fallbackPath.push({ x: width / 2, y: height / 2 });
+        paths.push(fallbackPath);
+    }
 }
 
 // --- Game Control ---
@@ -471,57 +504,76 @@ function startWave() {
 
 function generateNewPath() {
     // Attempt to generate a new path from a random edge point to an existing path point
-    // Simple BFS on the grid
 
     // 1. Pick Start (Top, Left, Right edges)
     const side = Math.floor(Math.random() * 3); // 0: Top, 1: Left, 2: Right
     let startNode;
-    const cols = width / GRID_SIZE;
-    const rows = height / GRID_SIZE;
+    const cols = Math.floor(width / GRID_SIZE);
+    const rows = Math.floor(height / GRID_SIZE);
 
     if (side === 0) startNode = { c: Math.floor(Math.random() * cols), r: 0 };
     else if (side === 1) startNode = { c: 0, r: Math.floor(Math.random() * rows) };
     else startNode = { c: cols - 1, r: Math.floor(Math.random() * rows) };
 
-    // Ensure start isn't too close to existing starts? (Skipped for simplicity)
-
     // 2. Pick End (Any point on the MAIN path, preferably later half)
+    if (paths.length === 0) return;
     const mainPath = paths[0];
-    // Find a grid cell corresponding to a point on the main path
-    // Let's just target the BASE for guaranteed convergence if we can find it
-    // Or target a random waypoint on the main path
+
+    // Target somewhere in the second half of the main path to ensure it flows towards base
     const targetWaypoint = mainPath[Math.floor(mainPath.length / 2) + Math.floor(Math.random() * (mainPath.length / 2))];
     const endNode = {
         c: Math.floor(targetWaypoint.x / GRID_SIZE),
         r: Math.floor(targetWaypoint.y / GRID_SIZE)
     };
 
-    // 3. BFS
-    // Build grid map of obstacles (Towers)
+    // 3. BFS using helper
+    const newPathPoints = findPathOnGrid(startNode, endNode, towers);
+
+    if (newPathPoints) {
+        // Append the rest of the main path from the connection point
+        const idx = mainPath.indexOf(targetWaypoint);
+        if (idx !== -1) {
+            for (let i = idx + 1; i < mainPath.length; i++) {
+                newPathPoints.push(mainPath[i]);
+            }
+        }
+
+        paths.push(newPathPoints);
+    }
+}
+
+function findPathOnGrid(startNode, endNode, currentTowers) {
+    const cols = Math.floor(width / GRID_SIZE);
+    const rows = Math.floor(height / GRID_SIZE);
+
+    // Build grid map of obstacles
     const grid = [];
     for (let r = 0; r < rows; r++) {
         grid[r] = [];
         for (let c = 0; c < cols; c++) grid[r][c] = 0; // 0 = empty, 1 = obstacle
     }
-    for (let t of towers) {
+
+    // Mark towers as obstacles
+    for (let t of currentTowers) {
         let tc = Math.floor(t.x / GRID_SIZE);
         let tr = Math.floor(t.y / GRID_SIZE);
         if (tr >= 0 && tr < rows && tc >= 0 && tc < cols) grid[tr][tc] = 1;
     }
 
+    // BFS
     const queue = [];
     queue.push({ c: startNode.c, r: startNode.r, parent: null });
     const visited = new Set();
     visited.add(`${startNode.c},${startNode.r}`);
 
-    let foundPath = null;
+    let foundPathNode = null;
 
+    // Heuristic optimization? Just BFS is fine for this size
     while (queue.length > 0) {
         const curr = queue.shift();
 
-        // Check if close to existing path? For now just reach target
         if (curr.c === endNode.c && curr.r === endNode.r) {
-            foundPath = curr;
+            foundPathNode = curr;
             break;
         }
 
@@ -539,42 +591,21 @@ function generateNewPath() {
         }
     }
 
-    if (foundPath) {
+    if (foundPathNode) {
         // Reconstruct
-        const newPathPoints = [];
-        let curr = foundPath;
+        const pathPoints = [];
+        let curr = foundPathNode;
         while (curr) {
-            newPathPoints.unshift({
+            pathPoints.unshift({
                 x: curr.c * GRID_SIZE + GRID_SIZE / 2,
                 y: curr.r * GRID_SIZE + GRID_SIZE / 2
             });
             curr = curr.parent;
         }
-        // Append the rest of the main path from the connection point
-        // Optimally we'd merge, but for now just having a path to the target waypoint is enough
-        // The enemies will just follow this new path to the end node. 
-        // If end node is mid-way in main path, we need to append the rest of main path to this new path? 
-        // Actually, let's just make the new path go all the way to base if BFS found it.
-        // Wait, BFS found path to 'endNode' which is on the main path.
-        // So we should append points from main path after 'endNode' index.
-        // For simplicity, let's just add the path we found. It connects to the main path.
-
-        // BUT enemies need to know where to go AFTER reaching endNode.
-        // Simple hack: Add the rest of the main waypoints to this new path
-        // Find index of targetWaypoint in mainPath
-        const idx = mainPath.indexOf(targetWaypoint);
-        if (idx !== -1) {
-            for (let i = idx + 1; i < mainPath.length; i++) {
-                newPathPoints.push(mainPath[i]);
-            }
-        }
-
-        paths.push(newPathPoints);
-
-        // Notify
-        // console.log("New Path Added!");
-        // Visual flare?
+        return pathPoints;
     }
+
+    return null;
 }
 
 window.selectTower = function (type) {
@@ -1079,16 +1110,22 @@ function draw() {
     // Draw Base (Core) - using end of first path (assume all lead to base)
     const base = paths[0][paths[0].length - 1];
     ctx.shadowBlur = 20;
-    ctx.shadowColor = '#00f3ff';
-    ctx.fillStyle = '#00f3ff'; // Blue core
+    ctx.shadowColor = '#00ff41'; // Green glow
+    ctx.fillStyle = '#00ff41';   // Green core
+
+    // Draw Crystal/Diamond Shape
     ctx.beginPath();
-    ctx.rect(base.x - 15, base.y - 15, 30, 30);
+    ctx.moveTo(base.x, base.y - 18); // Top
+    ctx.lineTo(base.x + 18, base.y); // Right
+    ctx.lineTo(base.x, base.y + 18); // Bottom
+    ctx.lineTo(base.x - 18, base.y); // Left
     ctx.fill();
+
     // Core pulsing effect
-    ctx.fillStyle = 'white';
+    ctx.fillStyle = '#fff';
     ctx.globalAlpha = 0.5 + Math.sin(Date.now() / 200) * 0.3;
     ctx.beginPath();
-    ctx.rect(base.x - 8, base.y - 8, 16, 16);
+    ctx.arc(base.x, base.y, 8, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalAlpha = 1.0;
 
@@ -1111,9 +1148,11 @@ function draw() {
         if (e.type === 'tank') {
             ctx.rect(e.x - 10, e.y - 10, 20, 20);
         } else if (e.type === 'fast') {
-            ctx.moveTo(e.x + 10, e.y);
-            ctx.lineTo(e.x - 5, e.y + 5);
-            ctx.lineTo(e.x - 5, e.y - 5);
+            // Vertical Kite / Diamond (Looks better moving in all directions)
+            ctx.moveTo(e.x, e.y - 12); // Top
+            ctx.lineTo(e.x + 6, e.y);  // Right
+            ctx.lineTo(e.x, e.y + 8);  // Bottom
+            ctx.lineTo(e.x - 6, e.y);  // Left
         } else if (e.type === 'boss') {
             // Hexagon
             const size = e.width / 2;
