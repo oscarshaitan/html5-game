@@ -1816,7 +1816,22 @@ function generateNewPath() {
         }
     }
 
-    const newPathPoints = findPathOnGrid(startNode, targetNode, []);
+    // 3. GENERATE PATH
+    const obstacles = [];
+    for (let i = 0; i < paths.length; i++) {
+        // If merging, we don't treat the target path as an obstacle 
+        // because we need to link into its points.
+        if (i === mergePathIndex) continue;
+
+        for (let pt of paths[i].points) {
+            obstacles.push({
+                x: Math.floor(pt.x / GRID_SIZE),
+                y: Math.floor(pt.y / GRID_SIZE)
+            });
+        }
+    }
+
+    const newPathPoints = findPathOnGrid(startNode, targetNode, obstacles);
 
     if (newPathPoints) {
         if (mergePathIndex !== -1) {
@@ -1899,12 +1914,18 @@ function findPathOnGrid(start, end, obstacles) {
 
         for (const n of neighbors) {
             if (n.c >= 0 && n.c < cols && n.r >= 0 && n.r < rows) {
-                let blocked = false;
-                for (const ob of obstacles) { if (ob.x === n.c && ob.y === n.r) { blocked = true; break; } }
-                if (blocked) continue;
+                // Crossing Penalty: Instead of a hard block, we use a very high cost
+                // This ensures the pathfinder doesn't "break" but paths avoid crossing.
+                let obstaclePenalty = 0;
+                for (const ob of obstacles) {
+                    if (ob.x === n.c && ob.y === n.r) {
+                        obstaclePenalty = 100;
+                        break;
+                    }
+                }
 
                 const nKey = `${n.c},${n.r}`;
-                let cost = 1;
+                let cost = 1 + obstaclePenalty;
                 if (current.dir && (current.dir.dc !== n.dc || current.dir.dr !== n.dr)) {
                     cost += 5; // Reduced turn penalty for better map coverage
                 }
