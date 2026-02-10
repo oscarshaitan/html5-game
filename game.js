@@ -741,6 +741,28 @@ function handleClick() {
         return;
     }
 
+    // --- NEW: Precise Path Segment Selection ---
+    let closestRiftByPath = null;
+    let minPathDist = 30; // 30px proximity threshold
+
+    for (let rift of paths) {
+        for (let i = 0; i < rift.points.length - 1; i++) {
+            const p1 = rift.points[i];
+            const p2 = rift.points[i + 1];
+            const d = distToSegment(mouseX, mouseY, p1.x, p1.y, p2.x, p2.y);
+            if (d < minPathDist) {
+                minPathDist = d;
+                closestRiftByPath = rift;
+            }
+        }
+    }
+
+    if (closestRiftByPath) {
+        selectRift(closestRiftByPath);
+        selectedZone = -1; // Clear zone highlighting when selecting a specific path
+        return;
+    }
+
     // Check interaction with BASE (Center)
     // Check interaction with BASE (Center)
     // Use the actual base position from the path data
@@ -774,7 +796,7 @@ function handleClick() {
     // Snap to grid
     const snap = snapToGrid(mouseX, mouseY);
 
-    // --- Orbital Zone Selection (Tap empty space to highlight zone) ---
+    // --- Orbital Zone Selection (Tap empty space to highlight zone in Debug Mode) ---
     if (paths.length > 0) {
         const base = paths[0].points[paths[0].points.length - 1];
         const distToCenter = Math.hypot(mouseX - base.x, mouseY - base.y) / GRID_SIZE;
@@ -2898,21 +2920,26 @@ function draw() {
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
 
-        const isSelected = (pathData === selectedRift) || (pathData.zone === selectedZone);
-        ctx.lineWidth = GRID_SIZE * (isSelected ? 1.6 : 0.8);
-        ctx.shadowBlur = isSelected ? 30 : 10;
+        // HIGHLIGHTING LOGIC: 
+        // Individual selection always glows. Zone selection only glows if debug overlay is active.
+        const isIndividualSelected = (pathData === selectedRift);
+        const isZoneSelected = showNoBuildOverlay && (pathData.zone === selectedZone);
+        const isHighlighted = isIndividualSelected || isZoneSelected;
+
+        ctx.lineWidth = GRID_SIZE * (isHighlighted ? 1.6 : 0.8);
+        ctx.shadowBlur = isHighlighted ? 30 : 10;
 
         let pathColor = mutation ? mutation.color : (riftLevel > 1 ? 'rgba(255, 0, 172, 0.4)' : 'rgba(0, 243, 255, 0.1)');
-        if (isSelected) pathColor = mutation ? mutation.color : (riftLevel > 1 ? '#ff00ac' : '#00f3ff');
+        if (isHighlighted) pathColor = mutation ? mutation.color : (riftLevel > 1 ? '#ff00ac' : '#00f3ff');
 
         ctx.shadowColor = pathColor;
         ctx.strokeStyle = mutation ? `${mutation.color}11` : (riftLevel > 1 ? 'rgba(255, 0, 172, 0.1)' : 'rgba(0, 243, 255, 0.05)');
-        if (isSelected) ctx.strokeStyle = pathColor + '33';
+        if (isHighlighted) ctx.strokeStyle = pathColor + '33';
         ctx.stroke();
         ctx.shadowBlur = 0;
 
         // Center Line
-        ctx.lineWidth = isSelected ? 4 : 2;
+        ctx.lineWidth = isHighlighted ? 4 : 2;
         ctx.strokeStyle = mutation ? mutation.color : (riftLevel > 1 ? '#ff00ac' : '#00f3ff');
         ctx.setLineDash([10, 10]);
         ctx.stroke();
