@@ -741,28 +741,6 @@ function handleClick() {
         return;
     }
 
-    // --- NEW: Precise Path Segment Selection ---
-    let closestRiftByPath = null;
-    let minPathDist = 30; // 30px proximity threshold
-
-    for (let rift of paths) {
-        for (let i = 0; i < rift.points.length - 1; i++) {
-            const p1 = rift.points[i];
-            const p2 = rift.points[i + 1];
-            const d = distToSegment(mouseX, mouseY, p1.x, p1.y, p2.x, p2.y);
-            if (d < minPathDist) {
-                minPathDist = d;
-                closestRiftByPath = rift;
-            }
-        }
-    }
-
-    if (closestRiftByPath) {
-        selectRift(closestRiftByPath);
-        selectedZone = -1; // Clear zone highlighting when selecting a specific path
-        return;
-    }
-
     // Check interaction with BASE (Center)
     // Check interaction with BASE (Center)
     // Use the actual base position from the path data
@@ -816,6 +794,23 @@ function handleClick() {
     for (let t of towers) {
         if (Math.abs(t.x - snap.x) < 1 && Math.abs(t.y - snap.y) < 1) {
             occupied = true; break;
+        }
+    }
+
+    // Check if on a path (using grid cells)
+    if (!occupied) {
+        for (let rift of paths) {
+            for (let p of rift.points) {
+                const pc = Math.floor(p.x / GRID_SIZE);
+                const pr = Math.floor(p.y / GRID_SIZE);
+                const snapC = Math.floor(snap.x / GRID_SIZE);
+                const snapR = Math.floor(snap.y / GRID_SIZE);
+                if (pc === snapC && pr === snapR) {
+                    occupied = true;
+                    break;
+                }
+            }
+            if (occupied) break;
         }
     }
 
