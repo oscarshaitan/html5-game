@@ -123,6 +123,11 @@ let isPaused = false;
 let showNoBuildOverlay = false;
 let selectedZone = -1; // -1 means no zone highlighted
 
+// --- Tutorial State ---
+let tutorialActive = false;
+let tutorialStep = 0;
+let completedTutorial = localStorage.getItem('neonDefenseTutorialComplete') === 'true';
+
 // --- Base State ---
 let baseLevel = 0; // 0 = No turret, 1+ = Turret active
 let baseCooldown = 0;
@@ -455,6 +460,11 @@ window.onload = () => {
     // Init Audio UI from saved settings
     AudioEngine.updateSoundUI();
 
+    // Start Tutorial if not completed
+    if (!completedTutorial) {
+        startTutorial();
+    }
+
     // Hotkeys
     window.addEventListener('keydown', (e) => {
         if (gameState !== 'playing') return;
@@ -462,19 +472,30 @@ window.onload = () => {
         // Init audio on first interaction
         AudioEngine.init();
 
+        const buildPanel = document.getElementById('controls-bar');
+        const selectionPanel = document.getElementById('selection-panel');
+        const buildVisible = buildPanel && !buildPanel.classList.contains('hidden');
+        const selectionVisible = selectionPanel && !selectionPanel.classList.contains('hidden');
+
         switch (e.key.toLowerCase()) {
-            case 'q': selectTower('basic'); break;
-            case 'w': selectTower('rapid'); break;
-            case 'e': selectTower('sniper'); break;
+            case 'q':
+                if (buildVisible) selectTower('basic');
+                break;
+            case 'w':
+                if (buildVisible) selectTower('rapid');
+                break;
+            case 'e':
+                if (buildVisible) selectTower('sniper');
+                break;
             case 'u':
-                if (selectedPlacedTower) upgradeTower();
+                if (selectionVisible && selectedPlacedTower) upgradeTower();
                 break;
             case 'backspace':
             case 'delete':
-                if (selectedPlacedTower) sellTower();
+                if (selectionVisible && selectedPlacedTower) sellTower();
                 break;
             case 'escape':
-                if (selectedPlacedTower) deselectTower();
+                if (selectedPlacedTower || buildTarget) deselectTower();
                 else togglePause();
                 break;
         }
@@ -841,6 +862,11 @@ function selectBuildTarget(x, y) {
 
     // Play sound
     // AudioEngine.playSFX('click'); 
+
+    // Tutorial Step Advance
+    if (tutorialActive && tutorialStep === 1) {
+        nextTutorialStep();
+    }
 }
 
 function selectBase() {
@@ -1025,6 +1051,7 @@ window.startGame = function () {
     resetGameLogic();
     gameState = 'playing';
     saveGame();
+    if (!completedTutorial) startTutorial();
 };
 
 window.resetGame = function () {
@@ -1036,6 +1063,12 @@ window.resetGame = function () {
 
 window.fullReset = function () {
     localStorage.removeItem('neonDefenseSave');
+    localStorage.removeItem('neonDefenseTutorialComplete');
+    location.reload();
+};
+
+window.resetTutorial = function () {
+    localStorage.removeItem('neonDefenseTutorialComplete');
     location.reload();
 };
 
@@ -1309,6 +1342,8 @@ function savePlayerName() {
         gameState = 'playing';
         AudioEngine.init(); // Init audio on name confirm click
         updateUI();
+
+        if (!completedTutorial) startTutorial();
     }
 }
 
@@ -1566,6 +1601,11 @@ function startWave() {
     prepTimer = 0;
     document.getElementById('skip-btn').style.display = 'none';
 
+    // Tutorial Step Advance
+    if (tutorialActive && tutorialStep === 3) {
+        nextTutorialStep();
+    }
+
     // Clear Temporal Mutations (Fleeting)
     // Unlike Rift Tiers, mutations only last for the wave they occur in.
     paths.forEach(p => p.mutation = null);
@@ -1671,6 +1711,91 @@ function generateMutation() {
 
     console.log(`!!! RIFT MUTATED !!! Sector: ${profile.name}`);
     AudioEngine.playSFX('hit'); // Alert sound
+}
+
+// --- Tutorial Logic ---
+window.startTutorial = function () {
+    if (completedTutorial) return;
+    tutorialActive = true;
+    tutorialStep = 0;
+    isPaused = true; // Pause game logic during dialog
+    const overlay = document.getElementById('tutorial-overlay');
+    if (overlay) overlay.classList.remove('hidden');
+    updateTutorialBox();
+};
+
+window.nextTutorialStep = function () {
+    tutorialStep++;
+    updateTutorialBox();
+};
+
+window.skipTutorial = function () {
+    tutorialActive = false;
+    isPaused = false; // Resume game
+    const overlay = document.getElementById('tutorial-overlay');
+    if (overlay) overlay.classList.add('hidden');
+    localStorage.setItem('neonDefenseTutorialComplete', 'true');
+    completedTutorial = true;
+};
+
+let tutorialTypeInterval = null;
+function updateTutorialBox() {
+    const msg = document.getElementById('tutorial-msg');
+    const nextBtn = document.getElementById('tutorial-next-btn');
+    if (!msg || !nextBtn) return;
+
+    let text = "";
+    switch (tutorialStep) {
+        case 0:
+            text = "Welcome, Commander. Our sector is under threat. We need to establish a defense perimeter immediately.";
+            nextBtn.innerHTML = "UNDERSTOOD";
+            nextBtn.style.display = 'block';
+            isPaused = true;
+            break;
+        case 1:
+            text = "First, select a tactical position. <strong>Tap an empty square</strong> on the grid near the Core to target it.";
+            nextBtn.style.display = 'none';
+            isPaused = false; // Allow interaction
+            break;
+        case 2:
+            text = "Position locked. Now, <strong>choose a Tower type</strong> from the deployment panel below.";
+            nextBtn.style.display = 'none';
+            isPaused = false;
+            break;
+        case 3:
+            text = "Defense initialized. When you're ready to engage the enemy, click <strong>START WAVE</strong>.";
+            nextBtn.style.display = 'none';
+            isPaused = false;
+            break;
+        default:
+            finishTutorial();
+            return;
+    }
+
+    // Typewriter Effect
+    if (tutorialTypeInterval) clearInterval(tutorialTypeInterval);
+    msg.innerHTML = "";
+
+    // If it contains HTML tags (strong), don't type it out character by character to avoid broken tags
+    if (text.includes('<')) {
+        msg.innerHTML = text;
+    } else {
+        let i = 0;
+        tutorialTypeInterval = setInterval(() => {
+            msg.innerHTML += text[i];
+            i++;
+            if (i >= text.length) clearInterval(tutorialTypeInterval);
+        }, 20);
+    }
+}
+
+function finishTutorial() {
+    tutorialActive = false;
+    isPaused = false; // Ensure game resumes
+    const overlay = document.getElementById('tutorial-overlay');
+    if (overlay) overlay.classList.add('hidden');
+    localStorage.setItem('neonDefenseTutorialComplete', 'true');
+    completedTutorial = true;
 }
 
 function generateNewPath() {
@@ -1958,6 +2083,11 @@ window.selectTower = function (type) {
         selectedTowerType = type;
         buildTower(buildTarget.x, buildTarget.y);
         deselectTower();
+
+        // Tutorial Step Advance
+        if (tutorialActive && tutorialStep === 2) {
+            nextTutorialStep();
+        }
         return;
     }
     selectedTowerType = type;
@@ -2829,6 +2959,17 @@ function updateUI() {
             }
         }
     }
+
+    // Build Panel: Disable unaffordable towers
+    document.querySelectorAll('.tower-selector').forEach(el => {
+        const type = el.getAttribute('data-type');
+        const cost = TOWERS[type].cost;
+        if (money < cost) {
+            el.classList.add('disabled');
+        } else {
+            el.classList.remove('disabled');
+        }
+    });
 }
 
 // --- Rendering ---
@@ -3333,12 +3474,13 @@ function draw() {
     ctx.scale(camera.zoom, camera.zoom);
 
     // Draw Placement Preview (Overlay on top of lighting)
-    if (isHovering && gameState === 'playing' && selectedTowerType) {
+    // Locked to buildTarget if it exists and a tower is selected
+    if (gameState === 'playing' && selectedTowerType && buildTarget) {
         const towerConfig = TOWERS[selectedTowerType];
 
-        // Use validation logic to get snapped coordinates
-        const validation = isValidPlacement(mouseX, mouseY, towerConfig);
-        const snap = validation.snap || snapToGrid(mouseX, mouseY);
+        // Use buildTarget coordinates instead of mouseX/mouseY
+        const validation = isValidPlacement(buildTarget.x, buildTarget.y, towerConfig);
+        const snap = buildTarget;
 
         ctx.save();
 

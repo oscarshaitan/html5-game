@@ -228,6 +228,7 @@
     <div class="method">
         <div class="method-name">isValidPlacement(x, y, config)</div>
         <div class="desc">Checks grid collision against paths, UI bounds, and existing towers. Returns snap coordinates.
+            <strong>Update</strong>: Now blocks selection if targeting a cell occupied by a Rift Path.
         </div>
     </div>
 
@@ -253,8 +254,25 @@
     </div>
     <div class="method">
         <div class="method-name">generateNewPath()</div>
-        <div class="desc">Generates a randomized independent path from the grid edge to the core. Destroys any towers in
-            its path. Triggered periodically (e.g., every 10 waves).</div>
+        <div class="desc">Generates an independent path from an orbital shell to the core or a neighbor.
+            <ul>
+                <li><strong>Spatial Zoning</strong>: Rifts fill concentric shells ($6 \pm 3n$ units) sequentially.</li>
+                <li><strong>Shell Capacity</strong>: Limits paths per zone using the $2n^2$ model (Orbit 1: 2, Orbit 2:
+                    8, etc.).</li>
+                <li><strong>Connectivity</strong>: Direct linkage to core follows $P = 1/2^{n-1}$ probability curve.
+                    Failing this, it seeks the absolute closest neighbor segment for a merge.</li>
+            </ul>
+        </div>
+    </div>
+    <div class="method">
+        <div class="method-name">findPathOnGrid(start, end, obstacles)</div>
+        <div class="desc">A* pathfinder with dynamic weighting.
+            <ul>
+                <li><strong>Crossing Penalties</strong>: Existing rifts are treated as high-resistance terrain (cost:
+                    100).</li>
+                <li><strong>Turn Penalties</strong>: Penalty of 5 for direction shifts to favor straight segments.</li>
+            </ul>
+        </div>
     </div>
 
     </div>
@@ -272,9 +290,11 @@
             and applies logic:
             <ul>
                 <li><code>emp</code>: Flags enemies in radius with <code>frozen: true</code> and sets
-                    <code>frozenTimer</code>.</li>
+                    <code>frozenTimer</code>.
+                </li>
                 <li><code>overclock</code>: Flags a tower with <code>overclocked: true</code> and sets
-                    <code>overclockTimer</code>.</li>
+                    <code>overclockTimer</code>.
+                </li>
             </ul>
         </div>
     </div>

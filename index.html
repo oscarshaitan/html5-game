@@ -63,8 +63,18 @@
                     <div class="tower-icon sniper-icon"></div>
                     <div class="tower-cost">200</div>
                 </div>
-                <button id="recenter-btn" onclick="resetCamera()" title="Reset Camera">⌖</button>
             </div>
+
+            <button id="recenter-btn" onclick="resetCamera()" title="Reset Camera">
+                <svg viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2" />
+                    <line x1="12" y1="2" x2="12" y2="5" stroke="currentColor" stroke-width="2" />
+                    <line x1="12" y1="19" x2="12" y2="22" stroke="currentColor" stroke-width="2" />
+                    <line x1="2" y1="12" x2="5" y2="12" stroke="currentColor" stroke-width="2" />
+                    <line x1="19" y1="12" x2="22" y2="12" stroke="currentColor" stroke-width="2" />
+                    <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+                </svg>
+            </button>
 
             <div id="abilities-bar">
                 <div class="ability-slot" id="ability-emp" onclick="activateAbility('emp')">
@@ -158,7 +168,8 @@
                             <button class="debug-btn" style="flex: 1; font-size: 0.7rem;"
                                 onclick="debugLevelUpRift()">LEVEL UP RIFT</button>
                         </div>
-                        <button class="debug-btn" style="width: 100%; margin-bottom: 5px; font-size: 0.7rem; background: #ff00ac;" 
+                        <button class="debug-btn"
+                            style="width: 100%; margin-bottom: 5px; font-size: 0.7rem; background: #ff00ac;"
                             onclick="toggleNoBuildOverlay()">TOGGLE OVERLAY</button>
                         <div class="debug-spawn-grid">
                             <button class="debug-spawn-btn" onclick="debugSpawn('basic')">BASIC</button>
@@ -184,6 +195,11 @@
                     <a href="manual.html" target="_blank">MANUAL</a>
                     <a href="technical_docs.html" target="_blank">TECHNICAL</a>
                 </div>
+                <div style="margin-top: 30px;">
+                    <button
+                        style="font-size: 0.7rem; padding: 8px 15px; border-color: rgba(0, 243, 255, 0.3); color: rgba(0, 243, 255, 0.5); box-shadow: none;"
+                        onclick="resetTutorial()">RESET TUTORIAL</button>
+                </div>
             </div>
 
             <div id="name-entry-modal" class="hidden">
@@ -192,6 +208,25 @@
                     <p>ENTER COMMANDER NAME</p>
                     <input type="text" id="player-name-input" placeholder="NAME" maxlength="15">
                     <button onclick="savePlayerName()">CONFIRM IDENTITY</button>
+                </div>
+            </div>
+            <div id="tutorial-overlay" class="hidden">
+                <div class="tutorial-box">
+                    <div class="commander-tag">INCOMING TRANSMISSION</div>
+                    <div class="tutorial-layout">
+                        <div class="tutorial-avatar">
+                            <div class="avatar-glow"></div>
+                            <div class="avatar-icon"></div>
+                        </div>
+                        <div class="tutorial-body">
+                            <div id="tutorial-msg">Welcome, Commander. Our sector is under threat. We need to establish
+                                a defense perimeter immediately.</div>
+                        </div>
+                    </div>
+                    <div class="tutorial-actions">
+                        <button id="tutorial-skip-btn" onclick="skipTutorial()">IGNORE</button>
+                        <button id="tutorial-next-btn" onclick="nextTutorialStep()">UNDERSTOOD</button>
+                    </div>
                 </div>
             </div>
         </div>

@@ -252,12 +252,27 @@
         <li><span class="key">U</span> - Upgrade selected tower</li>
         <li><span class="key">Del</span> / <span class="key">Backspace</span> - Sell selected tower</li>
         <li><span class="key">Esc</span> - Deselect or Pause</li>
-        <li><span class="key">Tap Wave Counter</span> - View <strong>Wave Intelligence</strong></li>
+        <li><span class="key">Select Spawn Orb</span> - View <strong>Rift Intel</strong> and highlight path</li>
         <li><span class="key">Mouse Drag</span> - Pan Camera</li>
         <li><span class="key">Mouse Wheel</span> - Zoom in/out</li>
     </ul>
 
-    <h2>03. THE CORE (BASE)</h2>
+    <h2>03. ORBITAL PHYSICS</h2>
+    <p>The grid is organized into concentric <strong>Orbital Shells</strong> relative to the Core. The distribution
+        of rifts follows complex spatial laws:</p>
+    <ul>
+        <li><span class="highlight">Shell Capacity ($2n^2$)</span>: The number of rifts allowed in each ring is limited
+            by its distance. Orbit 1 (inner) supports 2 rifts, Orbit 2 supports 8, Orbit 3 supports 18, etc. Inner
+            shells must be full
+            before the network expands outward.</li>
+        <li><span class="highlight">Link Stability ($1/2^{n-1}$)</span>: Core connection reliability degrades with
+            distance. Zone 1 rifts always link directly to the core. Zone 2 rifts have a 50% chance to link, preferring
+            merges into existing shells otherwise.</li>
+        <li><span class="highlight">Path Interconnection</span>: As the network grows, outer rifts intelligently merge
+            into high-capacity arteries near the core, creating a efficient mesh network.</li>
+    </ul>
+
+    <h2>04. THE CORE (BASE)</h2>
     <div
         style="display: flex; align-items: center; gap: 20px; background: rgba(0, 255, 65, 0.05); padding: 15px; border: 1px solid rgba(0, 255, 65, 0.2);">
         <div class="icon shadow-glow" style="color: var(--neon-green); margin: 0;">
@@ -379,9 +394,69 @@
 
     <ul>
         <li><span class="highlight">Rifts</span>: New paths for enemies will open every 10 waves (every 5 waves after
-            wave 50). Click a Rift to view its <strong>Rift Intel</strong>.</li>
+            wave 50). Tap a <strong>Rift Spawn point</strong> (the glowing orb) to view its intel and illuminate its
+            entire path with neon energy.</li>
         <li><span class="highlight">Veteran Rifts</span>: After Wave 50, Rifts have a 10% chance to Evolve into a higher
-            <strong>Tier</strong>. Each Tier (T2, T3...) significantly boosts enemy HP, Speed, and Rewards.
+            <strong>Tier</strong>. Higher Tiers boost enemy stats and reward payouts:
+            <table
+                style="width: 100%; margin: 10px 0; border-collapse: collapse; font-size: 0.8rem; border: 1px solid rgba(0, 243, 255, 0.2);">
+                <tr style="background: rgba(0, 243, 255, 0.1);">
+                    <th style="padding: 5px; border: 1px solid rgba(0, 243, 255, 0.2);">TIER</th>
+                    <th style="padding: 5px; border: 1px solid rgba(0, 243, 255, 0.2);">HP BOOST</th>
+                    <th style="padding: 5px; border: 1px solid rgba(0, 243, 255, 0.2);">CREDITS</th>
+                </tr>
+                <tr>
+                    <td style="padding: 5px; border: 1px solid rgba(0, 243, 255, 0.2);">T1 (Standard)</td>
+                    <td style="padding: 5px; border: 1px solid rgba(0, 243, 255, 0.2);">1.0x</td>
+                    <td style="padding: 5px; border: 1px solid rgba(0, 243, 255, 0.2);">1.0x</td>
+                </tr>
+                <tr>
+                    <td style="padding: 5px; border: 1px solid rgba(0, 243, 255, 0.2);">T2+ (Veteran)</td>
+                    <td style="padding: 5px; border: 1px solid rgba(0, 243, 255, 0.2);">+50% per Tier</td>
+                    <td style="padding: 5px; border: 1px solid rgba(0, 243, 255, 0.2);">+25% per Tier</td>
+                </tr>
+            </table>
+        </li>
+        <li><span class="highlight">Sector Mutations</span>: Every 20 waves, a random Rift may be infected by an
+            anomaly. Mutations
+            only last for the current wave:
+            <table
+                style="width: 100%; margin: 10px 0; border-collapse: collapse; font-size: 0.8rem; border: 1px solid rgba(255, 0, 172, 0.2);">
+                <tr style="background: rgba(255, 0, 172, 0.1);">
+                    <th style="padding: 5px; border: 1px solid rgba(255, 0, 172, 0.2);">TYPE</th>
+                    <th style="padding: 5px; border: 1px solid rgba(255, 0, 172, 0.2);">EFFECT</th>
+                    <th style="padding: 5px; border: 1px solid rgba(255, 0, 172, 0.2);">YIELD</th>
+                </tr>
+                <tr>
+                    <td style="padding: 5px; border: 1px solid rgba(255, 0, 172, 0.2); color: #ff0033;">CRIMSON</td>
+                    <td style="padding: 5px; border: 1px solid rgba(255, 0, 172, 0.2);">Vicious (HP x1.6, SPD x1.2)</td>
+                    <td style="padding: 5px; border: 1px solid rgba(255, 0, 172, 0.2);">2.0x</td>
+                </tr>
+                <tr>
+                    <td style="padding: 5px; border: 1px solid rgba(255, 0, 172, 0.2); color: #aa00ff;">VOID</td>
+                    <td style="padding: 5px; border: 1px solid rgba(255, 0, 172, 0.2);">Unstable (HP x1.4, SPD x1.5)
+                    </td>
+                    <td style="padding: 5px; border: 1px solid rgba(255, 0, 172, 0.2);">2.5x</td>
+                </tr>
+                <tr>
+                    <td style="padding: 5px; border: 1px solid rgba(255, 0, 172, 0.2); color: #00ffaa;">TITAN</td>
+                    <td style="padding: 5px; border: 1px solid rgba(255, 0, 172, 0.2);">Monolithic (HP x3.0, SPD x0.7)
+                    </td>
+                    <td style="padding: 5px; border: 1px solid rgba(255, 0, 172, 0.2);">3.0x</td>
+                </tr>
+                <tr>
+                    <td style="padding: 5px; border: 1px solid rgba(255, 0, 172, 0.2); color: #ffffff;">PHASE</td>
+                    <td style="padding: 5px; border: 1px solid rgba(255, 0, 172, 0.2);">Ethereal (HP x1.2, SPD x2.0)
+                    </td>
+                    <td style="padding: 5px; border: 1px solid rgba(255, 0, 172, 0.2);">1.5x</td>
+                </tr>
+                <tr>
+                    <td style="padding: 5px; border: 1px solid rgba(255, 0, 172, 0.2); color: #fcee0a;">NEON</td>
+                    <td style="padding: 5px; border: 1px solid rgba(255, 0, 172, 0.2);">Energized (HP x1.8, SPD x1.3)
+                    </td>
+                    <td style="padding: 5px; border: 1px solid rgba(255, 0, 172, 0.2);">2.0x</td>
+                </tr>
+            </table>
         </li>
         <li><span class="highlight">Temporal Mutations</span>: Every 20 waves, a random Rift will undergo a
             <strong>Temporal Mutation</strong>. During that wave, 100% of enemies from that Rift will be ultra-powerful
@@ -413,6 +488,8 @@
         <li><span class="highlight">+1M CREDITS</span>: Instantly inject 1,000,000 credits into the local economy.</li>
         <li><span class="highlight">TACTICAL SPAWN</span>: Force-spawn any enemy type (Basic, Fast, Tank, Splitter,
             Bulwark, Shifter, or Boss) at a random Rift for defensive stress-testing.</li>
+        <li><span class="highlight">TOGGLE OVERLAY</span>: Visualizes the orbital boundaries and path-spacing buffers.
+            In this mode, tapping a ring highlights the entire shell in yellow.</li>
     </ul>
 
     <h2>08. TACTICAL SUPPORT</h2>
