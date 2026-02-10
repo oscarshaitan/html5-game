@@ -64,7 +64,8 @@ let lives = 20;
 
 let selectedTowerType = null; // null means we might be selecting an existing tower
 let selectedPlacedTower = null; // Reference to a placed tower object
-let selectedRift = null; // Reference to a selected rift object
+let selectedRift = null; // Reference to a placed tower object
+let buildTarget = null; // {x, y} for empty tile selection
 
 let towers = [];
 let enemies = [];
@@ -241,7 +242,11 @@ const AudioEngine = {
             this.sfxVol = v;
             if (this.sfxGain) this.sfxGain.gain.setTargetAtTime(v, this.ctx.currentTime, 0.1);
         }
-        localStorage.setItem('neonAudioSettings', JSON.stringify({ music: this.musicVol, sfx: this.sfxVol }));
+        localStorage.setItem('neonAudioSettings', JSON.stringify({
+            music: this.musicVol,
+            sfx: this.sfxVol,
+            muted: this.isMuted
+        }));
     },
 
     loadSettings() {
@@ -250,6 +255,7 @@ const AudioEngine = {
             const data = JSON.parse(saved);
             this.musicVol = data.music ?? 0.5;
             this.sfxVol = data.sfx ?? 0.7;
+            this.isMuted = data.muted ?? false; // Load mute state
         }
     },
 
@@ -258,7 +264,20 @@ const AudioEngine = {
         if (this.masterGain) {
             this.masterGain.gain.setTargetAtTime(this.isMuted ? 0 : 1, this.ctx.currentTime, 0.1);
         }
+        // Save mute state
+        localStorage.setItem('neonAudioSettings', JSON.stringify({
+            music: this.musicVol,
+            sfx: this.sfxVol,
+            muted: this.isMuted
+        }));
         return this.isMuted;
+    },
+
+    updateSoundUI() {
+        const text = `SOUND: ${this.isMuted ? 'OFF' : 'ON'}`;
+        if (document.getElementById('mute-btn-hud')) document.getElementById('mute-btn-hud').innerText = text;
+        if (document.getElementById('mute-btn-pause')) document.getElementById('mute-btn-pause').innerText = text;
+        if (document.getElementById('master-mute-btn')) document.getElementById('master-mute-btn').innerText = text;
     },
 
     playSFX(type) {
@@ -425,6 +444,9 @@ window.onload = () => {
             <button style="font-size: 0.8rem; padding: 10px;" onclick="fullReset()">NEW GAME</button>
         `;
     }
+
+    // Init Audio UI from saved settings
+    AudioEngine.updateSoundUI();
 
     // Hotkeys
     window.addEventListener('keydown', (e) => {
@@ -726,14 +748,64 @@ function handleClick() {
         }
     }
 
-    // If not clicking a tower, attempt to BUILD if one is selected
-    if (selectedTowerType) {
-        buildTower(mouseX, mouseY);
+    // If not clicking a tower, check if we have a build target or are selecting a new one
+    // New UX: Tapping empty space selects the spot for potential building (opens panel)
+
+    // 1. If we have a build target and click it again? (Maybe confirm? or just do nothing)
+    // 2. If we have a selected tower type (from panel), we might be building?
+    //    Actually, if panel is open, we select type then it should build immediately at buildTarget?
+    //    Or does selecting type just set selectedTowerType and we have to click again?
+    //    The plan says: "Select Tower -> Call buildTower(buildTarget.x, buildTarget.y) -> Hide Panel"
+    //    So handleClick just handles the initial empty click.
+
+    // If we are currently IN placement mode (legacy or drag-drop style? No, we are changing to Tap-Select-Build)
+    // If selectedTowerType is set, it means we clicked a button in the panel. 
+    // If we support "click panel -> click map" (old way), we might need to keep it or disable it.
+    // The request implies "show build panel ONLY when user tap empty square".
+    // So the flow is: Empty Click -> Panel Shows -> Select Tower -> Build.
+
+    // Snap to grid
+    const snap = snapToGrid(mouseX, mouseY);
+
+    // Check if valid build spot (simplistic check for now, specific validation in build)
+    // Just ensure it's not a path or tower (re-using validPlacement check logic or just simple check)
+    let occupied = false;
+    for (let t of towers) {
+        if (Math.abs(t.x - snap.x) < 1 && Math.abs(t.y - snap.y) < 1) {
+            occupied = true; break;
+        }
+    }
+
+    if (!occupied) {
+        // Double check path collision if we want to be strict, or just let them select and fail to build later?
+        // Better to select.
+
+        selectBuildTarget(snap.x, snap.y);
         return;
     }
 
-    // If clicking on empty space (no tower, no build), deselect
+    // If clicking on empty space (impossible to reach here logic-wise if occupied check covers everything?)
+    // Actually towers/base/rifts checks above cover occupied objects.
+    // So if we are here, it's effectively empty space but maybe "occupied" flag was for towers only?
+    // We already checked towers/rifts/base above. 
+
     deselectTower();
+}
+
+function selectBuildTarget(x, y) {
+    buildTarget = { x, y };
+    selectedPlacedTower = null;
+    selectedBase = false;
+    selectedRift = null;
+    selectedTowerType = null;
+
+    // Show Panel
+    document.getElementById('controls-bar').classList.remove('hidden');
+    // Hide other panels
+    document.getElementById('selection-panel').classList.add('hidden');
+
+    // Play sound
+    // AudioEngine.playSFX('click'); 
 }
 
 function selectBase() {
@@ -762,6 +834,11 @@ function deselectTower() {
     selectedBase = false;
     selectedRift = null;
     targetingAbility = null; // Clear ability targeting
+    buildTarget = null;
+
+    // Hide Build Panel
+    document.getElementById('controls-bar').classList.add('hidden');
+
     updateUI();
     updateSelectionUI();
 }
@@ -1068,10 +1145,7 @@ function updateWavePanel() {
 
 window.toggleMute = function () {
     const muted = AudioEngine.toggleMute();
-    const text = `SOUND: ${muted ? 'OFF' : 'ON'}`;
-    if (document.getElementById('mute-btn-hud')) document.getElementById('mute-btn-hud').innerText = text;
-    if (document.getElementById('mute-btn-pause')) document.getElementById('mute-btn-pause').innerText = text;
-    if (document.getElementById('master-mute-btn')) document.getElementById('master-mute-btn').innerText = text;
+    AudioEngine.updateSoundUI();
 };
 
 window.setMusicVolume = function (val) {
@@ -1742,6 +1816,21 @@ function findPathOnGrid(startNode, endNode, currentTowers) {
 }
 
 window.selectTower = function (type) {
+    if (buildTarget) {
+        // Immediate Build Mode
+        // We temporarily set selectedTowerType just for buildTower to read it (or modify buildTower to accept type)
+        // buildTower currently uses selectedTowerType. 
+        selectedTowerType = type;
+        buildTower(buildTarget.x, buildTarget.y);
+
+        // After build, close panel? Or keep open for multi-build?
+        // User said "show build panel only when user tap a empty square".
+        // Usually in this UX (Kingdom Rush etc), it closes after build.
+        deselectTower();
+        return;
+    }
+
+    // Legacy/Fallback (if called without target, unlikely with new flow)
     selectedTowerType = type;
     selectedPlacedTower = null; // Deselect existing tower
     selectedBase = false;
@@ -2775,6 +2864,34 @@ function draw() {
     ctx.arc(base.x, base.y, 8, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalAlpha = 1.0;
+
+    // Draw Build Target Selection
+    if (buildTarget) {
+        ctx.strokeStyle = '#00f3ff';
+        ctx.lineWidth = 2;
+        const btx = buildTarget.x - GRID_SIZE / 2;
+        const bty = buildTarget.y - GRID_SIZE / 2;
+
+        // pulsing
+        const p = (Math.sin(frameCount * 0.2) + 1) / 2; // 0 to 1
+        const gap = 5 + p * 5;
+
+        // Corners style
+        ctx.beginPath();
+        // Top-Left
+        ctx.moveTo(btx + 10, bty); ctx.lineTo(btx, bty); ctx.lineTo(btx, bty + 10);
+        // Top-Right
+        ctx.moveTo(btx + GRID_SIZE - 10, bty); ctx.lineTo(btx + GRID_SIZE, bty); ctx.lineTo(btx + GRID_SIZE, bty + 10);
+        // Bot-Right
+        ctx.moveTo(btx + GRID_SIZE, bty + GRID_SIZE - 10); ctx.lineTo(btx + GRID_SIZE, bty + GRID_SIZE); ctx.lineTo(btx + GRID_SIZE - 10, bty + GRID_SIZE);
+        // Bot-Left
+        ctx.moveTo(btx, bty + GRID_SIZE - 10); ctx.lineTo(btx, bty + GRID_SIZE); ctx.lineTo(btx + 10, bty + GRID_SIZE);
+
+        ctx.stroke();
+
+        ctx.fillStyle = 'rgba(0, 243, 255, 0.2)';
+        ctx.fillRect(btx, bty, GRID_SIZE, GRID_SIZE);
+    }
 
     // Draw Towers
     for (let t of towers) {
