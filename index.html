@@ -152,6 +152,12 @@
                     <div class="debug-menu hidden" id="command-center">
                         <h3>COMMAND CENTER</h3>
                         <button class="debug-btn money-btn" onclick="addDebugMoney()">+1M CREDITS</button>
+                        <div style="display: flex; gap: 5px; margin-bottom: 5px; width: 100%;">
+                            <button class="debug-btn" style="flex: 1; font-size: 0.7rem;"
+                                onclick="debugCreateRift()">NEW RIFT</button>
+                            <button class="debug-btn" style="flex: 1; font-size: 0.7rem;"
+                                onclick="debugLevelUpRift()">LEVEL UP RIFT</button>
+                        </div>
                         <div class="debug-spawn-grid">
                             <button class="debug-spawn-btn" onclick="debugSpawn('basic')">BASIC</button>
                             <button class="debug-spawn-btn" onclick="debugSpawn('fast')">FAST</button>

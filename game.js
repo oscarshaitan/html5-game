@@ -1640,13 +1640,25 @@ function generateMutation() {
 function generateNewPath() {
     // Generate an INDEPENDENT path to the base
 
+    // Generate an INDEPENDENT path to the base
+
+    // Target: Center (Base)
     const cols = Math.floor(width / GRID_SIZE);
     const rows = Math.floor(height / GRID_SIZE);
 
-    // Target: Center (Base)
-    const centerC = Math.floor(cols / 2);
-    const centerR = Math.floor(rows / 2);
-    const endNode = { c: centerC, r: centerR }; // Always path to center
+    let centerC = Math.floor(cols / 2);
+    let centerR = Math.floor(rows / 2);
+
+    // If we have an existing path, the base is at the end of it.
+    // We MUST target that same spot, even if the window resized and logical center shifted.
+    if (paths.length > 0 && paths[0].points.length > 0) {
+        const p = paths[0].points;
+        const base = p[p.length - 1]; // Last point is base
+        centerC = Math.floor(base.x / GRID_SIZE);
+        centerR = Math.floor(base.y / GRID_SIZE);
+    }
+
+    const endNode = { c: centerC, r: centerR }; // Always path to center (or existing base)
 
     // Helper to check if grid cell is occupied by any existing path
     const isLocationOnPath = (c, r) => {
@@ -1683,12 +1695,61 @@ function generateNewPath() {
         return;
     }
 
-    // 3. BFS - IGNORE TOWERS (Pass empty list)
-    // Destructive pathing: The path overrides any towers
-    const newPathPoints = findPathOnGrid(startNode, endNode, []);
+    // 3. TARGET SELECTION (Merge or Base)
+    // We want to find a target. It can be the base OR a point on another path.
+    // To encourage merging, we look for closest point on existing paths.
+
+    let targetNode = endNode;
+    let mergePathIndex = -1;
+    let mergePointIndex = -1;
+    let bestDist = Math.hypot(startNode.c - endNode.c, startNode.r - endNode.r);
+
+    // If there are paths, try to merge
+    if (paths.length > 0) {
+        // Find closest point on any existing path
+        for (let i = 0; i < paths.length; i++) {
+            const path = paths[i];
+            // Don't merge too close to start (avoid immediate merge)
+            // Don't merge too close to base (might as well go to base)
+            // Iterate points. convert to grid lines.
+
+            for (let j = 0; j < path.points.length; j++) {
+                const p = path.points[j];
+                const pc = Math.floor(p.x / GRID_SIZE);
+                const pr = Math.floor(p.y / GRID_SIZE);
+
+                const d = Math.hypot(startNode.c - pc, startNode.r - pr);
+
+                // Heuristic: shorter distance than to base?
+                // Also add some random bias to favor merging vs direct
+                if (d < bestDist * 0.8) {
+                    bestDist = d;
+                    targetNode = { c: pc, r: pr };
+                    mergePathIndex = i;
+                    mergePointIndex = j;
+                }
+            }
+        }
+    }
+
+    // 4. PATHFINDING
+    // Use a modified BFS or A* that adds cost to straight lines to encourage turns?
+    // Or simpler: BFS with random tie-breaking is already somewhat zigzaggy?
+    // Actually standard BFS on grid is usually L-shaped or Z-shaped depending on order of neighbors.
+    // To get "diverse" paths, we can shuffle neighbors or add random weights.
+    // Let's rely on findPathOnGrid having randomized neighbor order.
+
+    const newPathPoints = findPathOnGrid(startNode, targetNode, []);
 
     if (newPathPoints) {
-        // No merging logic anymore - path goes all the way to base
+        // If merging, we append the rest of the target path
+        if (mergePathIndex !== -1) {
+            const targetPath = paths[mergePathIndex];
+            // Add points from merge index + 1 to end
+            const continuation = targetPath.points.slice(mergePointIndex + 1);
+            newPathPoints.push(...continuation);
+        }
+
         paths.push({ points: newPathPoints, level: 1 });
 
         // DESTROY TOWERS ON PATH
@@ -1749,90 +1810,70 @@ function generateNewPath() {
     }
 }
 
-function findPathOnGrid(startNode, endNode, currentTowers) {
+function findPathOnGrid(start, end, obstacles) {
     const cols = Math.floor(width / GRID_SIZE);
     const rows = Math.floor(height / GRID_SIZE);
 
-    // Build grid map of obstacles
-    const grid = [];
-    for (let r = 0; r < rows; r++) {
-        grid[r] = [];
-        for (let c = 0; c < cols; c++) grid[r][c] = 0; // 0 = empty, 1 = obstacle
-    }
-
-    // Mark towers as obstacles
-    for (let t of currentTowers) {
-        let tc = Math.floor(t.x / GRID_SIZE);
-        let tr = Math.floor(t.y / GRID_SIZE);
-        if (tr >= 0 && tr < rows && tc >= 0 && tc < cols) grid[tr][tc] = 1;
-    }
-
-    // BFS
     const queue = [];
-    queue.push({ c: startNode.c, r: startNode.r, parent: null });
+    queue.push([start]);
     const visited = new Set();
-    visited.add(`${startNode.c},${startNode.r}`);
+    visited.add(start.c + ',' + start.r);
 
-    let foundPathNode = null;
-
-    // Heuristic optimization? Just BFS is fine for this size
     while (queue.length > 0) {
-        const curr = queue.shift();
+        const path = queue.shift();
+        const pos = path[path.length - 1];
 
-        if (curr.c === endNode.c && curr.r === endNode.r) {
-            foundPathNode = curr;
-            break;
+        if (pos.c === end.c && pos.r === end.r) {
+            return path.map(p => ({
+                x: p.c * GRID_SIZE + GRID_SIZE / 2,
+                y: p.r * GRID_SIZE + GRID_SIZE / 2
+            }));
         }
 
         const neighbors = [
-            { c: curr.c + 1, r: curr.r }, { c: curr.c - 1, r: curr.r },
-            { c: curr.c, r: curr.r + 1 }, { c: curr.c, r: curr.r - 1 }
+            { c: pos.c, r: pos.r - 1 },
+            { c: pos.c + 1, r: pos.r },
+            { c: pos.c, r: pos.r + 1 },
+            { c: pos.c - 1, r: pos.r }
         ];
 
-        for (let n of neighbors) {
-            if (n.c >= 0 && n.c < cols && n.r >= 0 && n.r < rows &&
-                !visited.has(`${n.c},${n.r}`) && grid[n.r][n.c] === 0) {
-                visited.add(`${n.c},${n.r}`);
-                queue.push({ c: n.c, r: n.r, parent: curr });
+        // SHUFFLE NEIGHBORS to create diverse path shapes
+        for (let i = neighbors.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [neighbors[i], neighbors[j]] = [neighbors[j], neighbors[i]];
+        }
+
+        for (const n of neighbors) {
+            if (n.c >= 0 && n.c < cols && n.r >= 0 && n.r < rows) {
+                const key = n.c + ',' + n.r;
+                if (!visited.has(key)) {
+                    let blocked = false;
+                    for (const ob of obstacles) {
+                        if (ob.x === n.c && ob.y === n.r) {
+                            blocked = true; break;
+                        }
+                    }
+                    if (!blocked) {
+                        visited.add(key);
+                        const newPath = [...path, n];
+                        queue.push(newPath);
+                    }
+                }
             }
         }
     }
-
-    if (foundPathNode) {
-        // Reconstruct
-        const pathPoints = [];
-        let curr = foundPathNode;
-        while (curr) {
-            pathPoints.unshift({
-                x: curr.c * GRID_SIZE + GRID_SIZE / 2,
-                y: curr.r * GRID_SIZE + GRID_SIZE / 2
-            });
-            curr = curr.parent;
-        }
-        return pathPoints;
-    }
-
     return null;
 }
 
 window.selectTower = function (type) {
     if (buildTarget) {
-        // Immediate Build Mode
-        // We temporarily set selectedTowerType just for buildTower to read it (or modify buildTower to accept type)
-        // buildTower currently uses selectedTowerType. 
         selectedTowerType = type;
         buildTower(buildTarget.x, buildTarget.y);
-
-        // After build, close panel? Or keep open for multi-build?
-        // User said "show build panel only when user tap a empty square".
-        // Usually in this UX (Kingdom Rush etc), it closes after build.
         deselectTower();
         return;
     }
-
-    // Legacy/Fallback (if called without target, unlikely with new flow)
     selectedTowerType = type;
-    selectedPlacedTower = null; // Deselect existing tower
+    selectedPlacedTower = null;
     selectedBase = false;
     document.querySelectorAll('.tower-selector').forEach(el => el.classList.remove('selected'));
     document.querySelector(`.tower-selector[data-type="${type}"]`).classList.add('selected');
@@ -1840,7 +1881,7 @@ window.selectTower = function (type) {
 
 function selectPlacedTower(tower) {
     selectedPlacedTower = tower;
-    selectedTowerType = null; // Disable placement mode
+    selectedTowerType = null;
     selectedBase = false;
     document.querySelectorAll('.tower-selector').forEach(el => el.classList.remove('selected'));
     updateSelectionUI();
@@ -1850,12 +1891,15 @@ window.deselectTower = function () {
     selectedPlacedTower = null;
     selectedBase = false;
     selectedRift = null;
+    buildTarget = null;
+    document.getElementById('controls-bar').classList.add('hidden');
     document.getElementById('selection-panel').classList.add('hidden');
+    updateUI();
+    updateSelectionUI();
 };
 
 window.upgradeTower = function () {
     if (!selectedPlacedTower) return;
-
     const cost = getUpgradeCost(selectedPlacedTower);
     if (money >= cost) {
         money -= cost;
@@ -1863,11 +1907,10 @@ window.upgradeTower = function () {
         selectedPlacedTower.damage *= 1.2;
         selectedPlacedTower.range *= 1.1;
         selectedPlacedTower.totalCost += cost;
-
         createParticles(selectedPlacedTower.x, selectedPlacedTower.y, '#00ff41', 15);
         updateSelectionUI();
         updateUI();
-        saveGame(); // Save on upgrade
+        saveGame();
     }
 };
 
@@ -2333,6 +2376,50 @@ window.debugSpawn = function (type) {
 
     isWaveActive = true; // Ensure systems process it
     updateUI();
+};
+
+window.debugCreateRift = function () {
+    generateNewPath();
+    // Force path recalculation or visual update if needed
+    // generateNewPath updates 'paths' array and handles tower removal
+    // It doesn't trigger path recalculation for existing enemies immediately unless they check currentPath
+
+    // Play sound
+    AudioEngine.playSFX('build');
+    console.log("Debug: Created new rift");
+
+    // Update UI to show new rift count/intel
+    if (document.getElementById('wave-info-panel') && !document.getElementById('wave-info-panel').classList.contains('hidden')) {
+        updateWavePanel();
+    }
+};
+
+window.debugLevelUpRift = function () {
+    if (paths.length === 0) return;
+
+    // Pick random rift
+    const rift = paths[Math.floor(Math.random() * paths.length)];
+    rift.level = (rift.level || 1) + 1;
+
+    // Visuals at start of rift
+    if (rift.points.length > 0) {
+        const start = rift.points[0];
+        createParticles(start.x, start.y, '#ff00ac', 30);
+        lightSources.push({ x: start.x, y: start.y, radius: 200, color: '#ff00ac', life: 1.0 });
+    }
+
+    AudioEngine.playSFX('build');
+    console.log(`Debug: Leveled up rift to T${rift.level}`);
+
+    // Update UI
+    if (document.getElementById('wave-info-panel') && !document.getElementById('wave-info-panel').classList.contains('hidden')) {
+        updateWavePanel();
+    }
+
+    // If this rift is selected, update selection UI
+    if (selectedRift === rift) {
+        updateSelectionUI();
+    }
 };
 
 function updateEnemies() {
