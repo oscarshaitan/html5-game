@@ -26,7 +26,7 @@ window.unlockDebug = async function () {
     const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 
     // Salted/Persistent protection check
-    if (hashHex === 'fb6225b8f9f677c00f1d357d91d98dd74fcc5441ea4c9f270796eb34a6522126') {
+    if (hashHex === '73ceb15f18bb0a313c8880abe54bf61a529dd8f1e75b084dd39926a1518d3d2f') {
         document.getElementById('debug-security').classList.add('hidden');
         document.getElementById('command-center').classList.remove('hidden');
     } else {
@@ -59,7 +59,7 @@ let width, height;
 let lastTime = 0;
 let gameState = 'start'; // start, playing, gameover
 let wave = 1;
-let money = 100;
+let money = 115;
 let lives = 20;
 
 let selectedTowerType = null; // null means we might be selecting an existing tower
@@ -522,7 +522,7 @@ function setupInput() {
         let newZoom = camera.zoom + (direction * zoomSpeed);
 
         // Clamp
-        newZoom = Math.max(0.5, Math.min(newZoom, 1.5));
+        newZoom = Math.max(0.1, Math.min(newZoom, 3.0));
 
         // Zoom towards mouse pointer logic
         const rect = canvas.getBoundingClientRect();
@@ -544,22 +544,98 @@ function setupInput() {
 
     }, { passive: false });
 
-    // Touch support (Basic tap) - Touches need similar transform
-    canvas.addEventListener('touchstart', (e) => {
-        if (e.touches.length > 0) {
-            const rect = canvas.getBoundingClientRect();
-            const touch = e.touches[0];
-            const rawX = touch.clientX - rect.left;
-            const rawY = touch.clientY - rect.top;
+    // Touch support (Pan & Tap & Pinch Zoom)
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let isTouchDragging = false;
+    let initialPinchDist = null;
+    let lastZoom = 1;
 
+    canvas.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 1) {
+            e.preventDefault(); // Prevent scrolling/zooming
+            const touch = e.touches[0];
+            touchStartX = touch.clientX;
+            touchStartY = touch.clientY;
+            isTouchDragging = false;
+
+            // Sync mouse pos for hover effects
+            const rect = canvas.getBoundingClientRect();
+            const rawX = touchStartX - rect.left;
+            const rawY = touchStartY - rect.top;
             const worldPos = screenToWorld(rawX, rawY);
             mouseX = worldPos.x;
             mouseY = worldPos.y;
-
-            handleClick();
-            isHovering = false; // sticky hover on touch is annoying
+            isHovering = true;
+        } else if (e.touches.length === 2) {
+            e.preventDefault();
+            const t1 = e.touches[0];
+            const t2 = e.touches[1];
+            initialPinchDist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+            lastZoom = camera.zoom;
         }
-    });
+    }, { passive: false });
+
+    canvas.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        if (e.touches.length === 1) {
+            const touch = e.touches[0];
+            const dx = touch.clientX - touchStartX;
+            const dy = touch.clientY - touchStartY;
+
+            // Threshold to consider it a drag
+            if (Math.hypot(dx, dy) > 5) {
+                isTouchDragging = true;
+                camera.x += dx;
+                camera.y += dy;
+
+                touchStartX = touch.clientX;
+                touchStartY = touch.clientY;
+            }
+        } else if (e.touches.length === 2 && initialPinchDist) {
+            const t1 = e.touches[0];
+            const t2 = e.touches[1];
+            const currentDist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+
+            if (currentDist > 0) {
+                const scale = currentDist / initialPinchDist;
+                let newZoom = lastZoom * scale;
+                newZoom = Math.max(0.1, Math.min(newZoom, 3.0));
+
+                // Zoom center logic could be added here (complex), for now center screen zoom or just zoom
+                // To zoom at center of pinch:
+                // 1. Get midpoint
+                const midX = (t1.clientX + t2.clientX) / 2;
+                const midY = (t1.clientY + t2.clientY) / 2;
+                const rect = canvas.getBoundingClientRect();
+                const rawMidX = midX - rect.left;
+                const rawMidY = midY - rect.top;
+
+                // Similar to wheel zoom logic
+                const worldX = (rawMidX - camera.x) / camera.zoom;
+                const worldY = (rawMidY - camera.y) / camera.zoom;
+
+                camera.zoom = newZoom;
+
+                camera.x = rawMidX - (worldX * newZoom);
+                camera.y = rawMidY - (worldY * newZoom);
+            }
+        }
+    }, { passive: false });
+
+    canvas.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        if (e.touches.length < 2) {
+            initialPinchDist = null;
+        }
+        if (e.touches.length === 0) {
+            if (!isTouchDragging && !initialPinchDist) { // Only click if not dragging and not finishing a pinch
+                handleClick();
+            }
+            isHovering = false; // Stop hovering after touch ends
+            isTouchDragging = false;
+        }
+    }, { passive: false });
 
     // Keydown for hotkeys
     window.addEventListener('keydown', (e) => {
@@ -637,14 +713,17 @@ function handleClick() {
     }
 
     // Check interaction with BASE (Center)
-    const cols = Math.floor(width / GRID_SIZE);
-    const rows = Math.floor(height / GRID_SIZE);
-    const baseX = Math.floor(cols / 2) * GRID_SIZE + GRID_SIZE / 2;
-    const baseY = Math.floor(rows / 2) * GRID_SIZE + GRID_SIZE / 2;
+    // Check interaction with BASE (Center)
+    // Use the actual base position from the path data
+    // (The base is always at the end of the paths)
+    if (paths.length > 0) {
+        const p = paths[0].points;
+        const base = p[p.length - 1];
 
-    if (Math.hypot(mouseX - baseX, mouseY - baseY) < 30) {
-        selectBase();
-        return;
+        if (Math.hypot(mouseX - base.x, mouseY - base.y) < 30) {
+            selectBase();
+            return;
+        }
     }
 
     // If not clicking a tower, attempt to BUILD if one is selected
@@ -700,12 +779,13 @@ window.repairBase = function () {
     if (money >= cost) {
         money -= cost;
         lives++;
+        lives++;
         // Use base world coordinates for particles
-        const cols = Math.floor(width / GRID_SIZE);
-        const rows = Math.floor(height / GRID_SIZE);
-        const baseX = Math.floor(cols / 2) * GRID_SIZE + GRID_SIZE / 2;
-        const baseY = Math.floor(rows / 2) * GRID_SIZE + GRID_SIZE / 2;
-        createParticles(baseX, baseY, '#00ff41', 20); // Green heal
+        if (paths.length > 0) {
+            const p = paths[0].points;
+            const base = p[p.length - 1];
+            createParticles(base.x, base.y, '#00ff41', 20); // Green heal
+        }
         AudioEngine.playSFX('build');
         updateUI();
         updateSelectionUI(); // Update buttons just in case
@@ -719,12 +799,13 @@ window.upgradeBase = function () {
     if (money >= cost && baseLevel < 10) {
         money -= cost;
         baseLevel++;
+        baseLevel++;
         // Use base world coordinates for particles
-        const cols = Math.floor(width / GRID_SIZE);
-        const rows = Math.floor(height / GRID_SIZE);
-        const baseX = Math.floor(cols / 2) * GRID_SIZE + GRID_SIZE / 2;
-        const baseY = Math.floor(rows / 2) * GRID_SIZE + GRID_SIZE / 2;
-        createParticles(baseX, baseY, '#00f3ff', 30); // Blue upgrade
+        if (paths.length > 0) {
+            const p = paths[0].points;
+            const base = p[p.length - 1];
+            createParticles(base.x, base.y, '#00f3ff', 30); // Blue upgrade
+        }
         AudioEngine.playSFX('build');
         updateUI();
         updateSelectionUI();
@@ -732,9 +813,28 @@ window.upgradeBase = function () {
 }
 
 function resize() {
-    width = canvas.width = window.innerWidth;
-    height = canvas.height = window.innerHeight;
-    calculatePath();
+    const dpr = window.devicePixelRatio || 1;
+
+    // Game Logic Dimensions (Logical Pixels)
+    width = window.innerWidth;
+    height = window.innerHeight;
+
+    // Rendering Dimensions (Physical Pixels)
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+
+    // CSS scaling handled by style.css (width: 100%, height: 100%)
+    // But explicitly setting style matches logical size
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+
+    // Scale drawing context so we use logical coordinates
+    ctx.scale(dpr, dpr);
+
+    // Only regenerate paths on initial load, not during active gameplay
+    if (gameState === 'start') {
+        calculatePath();
+    }
 }
 
 function snapToGrid(x, y) {
@@ -2247,11 +2347,11 @@ function updateTowers() {
     }
 
     // Base Turret Logic
-    if (baseLevel > 0) {
-        const cols = Math.floor(width / GRID_SIZE);
-        const rows = Math.floor(height / GRID_SIZE);
-        const baseX = Math.floor(cols / 2) * GRID_SIZE + GRID_SIZE / 2;
-        const baseY = Math.floor(rows / 2) * GRID_SIZE + GRID_SIZE / 2;
+    if (baseLevel > 0 && paths.length > 0) {
+        const p = paths[0].points;
+        const base = p[p.length - 1];
+        const baseX = base.x;
+        const baseY = base.y;
 
         if (baseCooldown > 0) baseCooldown--;
 
@@ -2492,26 +2592,31 @@ function draw() {
     ctx.translate(camera.x + sx, camera.y + sy);
     ctx.scale(camera.zoom, camera.zoom);
 
-    // Draw Grid (Infinite feel? Or just huge?)
-    // Drawing just the game bounds grid for now, but extending it a bit might be nice
-    // Or just draw the normal grid, and since we pan "infinite", users see empty space outside
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+    // Draw Grid (Infinite)
+    // Calculate visible world bounds
+    // screenX = worldX * zoom + cameraX  =>  worldX = (screenX - cameraX) / zoom
+    const startX = Math.floor((-camera.x - sx) / camera.zoom / GRID_SIZE) * GRID_SIZE;
+    const endX = Math.floor((width - camera.x - sx) / camera.zoom / GRID_SIZE + 1) * GRID_SIZE;
+    const startY = Math.floor((-camera.y - sy) / camera.zoom / GRID_SIZE) * GRID_SIZE;
+    const endY = Math.floor((height - camera.y - sy) / camera.zoom / GRID_SIZE + 1) * GRID_SIZE;
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)'; // Slightly fainter for infinite grid
     ctx.lineWidth = 1;
     ctx.beginPath();
-    for (let x = 0; x <= width; x += GRID_SIZE) {
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, height);
+
+    // Vertical lines
+    for (let x = startX; x <= endX; x += GRID_SIZE) {
+        ctx.moveTo(x, startY);
+        ctx.lineTo(x, endY);
     }
-    for (let y = 0; y <= height; y += GRID_SIZE) {
-        ctx.moveTo(0, y);
-        ctx.lineTo(width, y);
+    // Horizontal lines
+    for (let y = startY; y <= endY; y += GRID_SIZE) {
+        ctx.moveTo(startX, y);
+        ctx.lineTo(endX, y);
     }
     ctx.stroke();
 
-    // Draw World Borders (to show where grid ends)
-    ctx.strokeStyle = '#333';
-    ctx.lineWidth = 4;
-    ctx.strokeRect(0, 0, width, height);
+
 
     // Draw Paths
     for (let pathData of paths) {
@@ -2799,50 +2904,7 @@ function draw() {
     }
 
     // Draw Placement Preview
-    if (isHovering && gameState === 'playing' && selectedTowerType) {
-        const towerConfig = TOWERS[selectedTowerType];
 
-        // Use validation logic to get snapped coordinates
-        const validation = isValidPlacement(mouseX, mouseY, towerConfig);
-        const snap = validation.snap || snapToGrid(mouseX, mouseY);
-
-        ctx.save();
-
-        // Grid Highlight
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(snap.x - GRID_SIZE / 2, snap.y - GRID_SIZE / 2, GRID_SIZE, GRID_SIZE);
-
-        // Range Indicator
-        ctx.beginPath();
-        ctx.arc(snap.x, snap.y, towerConfig.range, 0, Math.PI * 2);
-        ctx.fillStyle = validation.valid ? 'rgba(0, 255, 65, 0.1)' : 'rgba(255, 0, 0, 0.1)';
-        ctx.fill();
-        ctx.strokeStyle = validation.valid ? 'rgba(0, 255, 65, 0.5)' : 'rgba(255, 0, 0, 0.5)';
-        ctx.setLineDash([5, 5]);
-        ctx.stroke();
-
-        // Tower Ghost
-        ctx.globalAlpha = 0.5;
-        const color = validation.valid ? towerConfig.color : '#ff0000';
-        drawTowerOne(selectedTowerType, snap.x, snap.y, color);
-
-        ctx.restore();
-    }
-
-    // Draw Selection Ring
-    if (selectedPlacedTower) {
-        ctx.beginPath();
-        ctx.arc(selectedPlacedTower.x, selectedPlacedTower.y, selectedPlacedTower.range, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
-        ctx.fill();
-        ctx.strokeStyle = '#fff';
-        ctx.setLineDash([5, 5]);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.lineWidth = 2;
-        ctx.strokeRect(selectedPlacedTower.x - 18, selectedPlacedTower.y - 18, 36, 36);
-    }
 
     // --- Ability Targeting Visuals ---
     if (targetingAbility === 'emp') {
@@ -2923,6 +2985,60 @@ function draw() {
     ctx.restore();
 
     ctx.restore(); // Restore from camera transform
+
+    // Re-apply camera transform for UI overlays so they match world coordinates
+    ctx.save();
+    ctx.translate(camera.x + sx, camera.y + sy);
+    ctx.scale(camera.zoom, camera.zoom);
+
+    // Draw Placement Preview (Overlay on top of lighting)
+    if (isHovering && gameState === 'playing' && selectedTowerType) {
+        const towerConfig = TOWERS[selectedTowerType];
+
+        // Use validation logic to get snapped coordinates
+        const validation = isValidPlacement(mouseX, mouseY, towerConfig);
+        const snap = validation.snap || snapToGrid(mouseX, mouseY);
+
+        ctx.save();
+
+        // Grid Highlight
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(snap.x - GRID_SIZE / 2, snap.y - GRID_SIZE / 2, GRID_SIZE, GRID_SIZE);
+
+        // Range Indicator
+        ctx.beginPath();
+        ctx.arc(snap.x, snap.y, towerConfig.range, 0, Math.PI * 2);
+        ctx.fillStyle = validation.valid ? 'rgba(0, 255, 65, 0.1)' : 'rgba(255, 0, 0, 0.1)';
+        ctx.fill();
+        ctx.strokeStyle = validation.valid ? 'rgba(0, 255, 65, 0.5)' : 'rgba(255, 0, 0, 0.5)';
+        ctx.setLineDash([5, 5]);
+        ctx.stroke();
+
+        // Tower Ghost
+        ctx.globalAlpha = 0.5;
+        const color = validation.valid ? towerConfig.color : '#ff0000';
+        drawTowerOne(selectedTowerType, snap.x, snap.y, color);
+
+        ctx.restore();
+    }
+
+    // Draw Selection Ring
+    if (selectedPlacedTower) {
+        ctx.beginPath();
+        ctx.arc(selectedPlacedTower.x, selectedPlacedTower.y, selectedPlacedTower.range, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+        ctx.fill();
+        ctx.strokeStyle = '#fff';
+        ctx.setLineDash([5, 5]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.lineWidth = 2;
+        ctx.strokeRect(selectedPlacedTower.x - 18, selectedPlacedTower.y - 18, 36, 36);
+    }
+
+    ctx.restore(); // End UI overlay transform
+
     ctx.shadowBlur = 0;
 }
 

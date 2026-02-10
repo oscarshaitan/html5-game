@@ -510,34 +510,101 @@ button:hover {
     box-shadow: 0 0 30px var(--neon-green);
 }
 
-@media (max-width: 600px) {
+@media (max-width: 768px) {
+    /* Main UI adjustments */
     #stats-bar {
-        font-size: 0.8rem;
-        padding: 5px 10px;
+        font-size: 0.75rem;
+        padding: 5px 8px;
         flex-wrap: wrap;
+        gap: 5px;
+        justify-content: space-around;
+        width: 100%;
+        left: 0;
+        right: 0;
+        top: 0;
+        border-radius: 0;
+        border-left: none;
+        border-right: none;
     }
 
     #timer-display {
         order: 3;
         width: 100%;
-        margin-top: 5px;
+        margin-top: 2px;
+        text-align: center;
+        background: rgba(0,0,0,0.5);
+        border-radius: 4px;
     }
 
-    #wave-controls {
-        top: 75px;
+    /* Move controls up slightly to avoid bottom bezel issues */
+    #controls-bar {
+        bottom: 80px; /* Space for selection panel/abilities if needed, or thumb reach */
+        padding: 5px;
+        gap: 10px;
+        width: 90%;
+        justify-content: center;
     }
 
+    /* Larger touch targets */
     .tower-selector {
-        width: 50px;
-        height: 70px;
+        width: 55px;
+        height: 75px;
     }
 
+    #recenter-btn {
+        width: 44px;
+        height: 44px;
+    }
+
+    /* Selection Panel - Centered overlapping bottom */
+    #selection-panel {
+        right: 50%;
+        transform: translateX(50%);
+        bottom: 15px; /* Above edge */
+        margin-right: 0;
+        width: 90%; /* Wide panel */
+        max-width: 350px;
+        flex-direction: row; /* Horizontal layout for space */
+        justify-content: space-between;
+        align-items: center;
+        min-width: auto;
+    }
+
+    /* Compact selection stats for horizontal layout */
+    #selected-stats {
+        width: 50%;
+    }
+    .actions {
+        width: 45%;
+    }
+
+    /* Abilities - Horizontal at bottom or vertical compact on side? 
+       Side is better for thumbs if holding device. 
+       Let's keep right side but make smaller/transparent */
+    #abilities-bar {
+        right: 5px;
+        padding: 10px 5px;
+        gap: 10px;
+    }
+    
+    .ability-slot {
+        width: 50px;
+        height: 50px;
+    }
+
+    /* Wave Controls */
+    #wave-controls {
+        top: 85px; /* Below stats bar */
+    }
+
+    /* Screens */
     h1 {
         font-size: 2rem;
     }
-
     p {
         font-size: 1rem;
+        padding: 0 20px;
+        text-align: center;
     }
 }
 
