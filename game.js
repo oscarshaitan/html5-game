@@ -12,6 +12,11 @@ const TOWERS = {
     sniper: { cost: 200, range: 250, damage: 50, cooldown: 90, color: '#ff00ac', type: 'sniper' }
 };
 
+window.toggleNoBuildOverlay = function () {
+    showNoBuildOverlay = !showNoBuildOverlay;
+    updateUI();
+}
+
 window.addDebugMoney = function () {
     money += 1000000;
     updateUI();
@@ -115,6 +120,8 @@ let abilities = {
 
 
 let isPaused = false;
+let showNoBuildOverlay = false;
+let selectedZone = -1; // -1 means no zone highlighted
 
 // --- Base State ---
 let baseLevel = 0; // 0 = No turret, 1+ = Turret active
@@ -767,8 +774,22 @@ function handleClick() {
     // Snap to grid
     const snap = snapToGrid(mouseX, mouseY);
 
-    // Check if valid build spot (simplistic check for now, specific validation in build)
-    // Just ensure it's not a path or tower (re-using validPlacement check logic or just simple check)
+    // --- Orbital Zone Selection (Tap empty space to highlight zone) ---
+    if (paths.length > 0) {
+        const base = paths[0].points[paths[0].points.length - 1];
+        const distToCenter = Math.hypot(mouseX - base.x, mouseY - base.y) / GRID_SIZE;
+
+        if (distToCenter < 6) {
+            selectedZone = 0;
+        } else if (distToCenter < 60) {
+            const zone = Math.floor((distToCenter - 6) / 3) + 1;
+            selectedZone = zone;
+        } else {
+            selectedZone = -1;
+        }
+    }
+
+    // Check if valid build spot
     let occupied = false;
     for (let t of towers) {
         if (Math.abs(t.x - snap.x) < 1 && Math.abs(t.y - snap.y) < 1) {
@@ -777,9 +798,6 @@ function handleClick() {
     }
 
     if (!occupied) {
-        // Double check path collision if we want to be strict, or just let them select and fail to build later?
-        // Better to select.
-
         selectBuildTarget(snap.x, snap.y);
         return;
     }
@@ -1477,6 +1495,7 @@ function resetGameLogic() {
     selectedPlacedTower = null;
     selectedBase = false;
     selectedRift = null;
+    selectedZone = -1;
     document.getElementById('selection-panel').classList.add('hidden');
     selectTower('basic');
 
@@ -1666,67 +1685,92 @@ function generateNewPath() {
         return false;
     };
 
-    // 1. Pick Best Candidate Start (Soft Edge + Body-Relative Dispersion)
+    // 1. Pick Best Candidate Start (Sequential Orbital Zoning + Body-Relative Dispersion)
     let bestStartNode = null;
-    let maxMinDist = -Infinity;
-    const candidatesCount = 40;
+    let foundZone = -1;
 
-    // Allow spawning in the outer 30% to ensure some "middle-ground" presence
-    const edgeMarginC = Math.max(2, Math.floor(cols * 0.3));
-    const edgeMarginR = Math.max(2, Math.floor(rows * 0.3));
+    // Electron Shell Capacities: 2, 8, 18, 32... (2 * n^2)
+    // We search through zones [6-9, 9-12, 12-15...] in order
+    for (let zoneIndex = 1; zoneIndex <= 15; zoneIndex++) {
+        // Count existing rifts in this zone
+        const zoneRiftCount = paths.filter(p => p.zone === zoneIndex).length;
+        const zoneCapacity = 2 * (zoneIndex * zoneIndex);
 
-    for (let i = 0; i < candidatesCount; i++) {
-        let c, r;
-        const side = Math.floor(Math.random() * 4);
-        if (side === 0) { // Left-ish margin
-            c = Math.floor(Math.random() * edgeMarginC);
-            r = Math.floor(Math.random() * rows);
-        } else if (side === 1) { // Right-ish margin
-            c = cols - 1 - Math.floor(Math.random() * edgeMarginC);
-            r = Math.floor(Math.random() * rows);
-        } else if (side === 2) { // Top-ish margin
-            r = Math.floor(Math.random() * edgeMarginR);
-            c = Math.floor(Math.random() * cols);
-        } else { // Bottom-ish margin
-            r = rows - 1 - Math.floor(Math.random() * edgeMarginR);
-            c = Math.floor(Math.random() * cols);
-        }
+        if (zoneRiftCount >= zoneCapacity) continue; // Orbit is full!
 
-        if (isLocationOnPath(c, r)) continue;
+        let maxMinDistForZone = -Infinity;
+        const innerR = 6 + (zoneIndex - 1) * 3;
+        const outerR = 6 + zoneIndex * 3;
+        let zoneHasCandidates = false;
 
-        // Dispersion: favor candidates farthest from ALL points on ALL paths
-        let minDist = Infinity;
-        if (paths.length === 0) {
-            minDist = Math.hypot(c - centerC, r - centerR);
-        } else {
-            for (const path of paths) {
-                for (const pt of path.points) {
-                    const d = Math.hypot(c - (pt.x / GRID_SIZE), r - (pt.y / GRID_SIZE));
-                    if (d < minDist) minDist = d;
+        for (let i = 0; i < 50; i++) {
+            // Pick random point in ring [innerR, outerR]
+            const angle = Math.random() * Math.PI * 2;
+            const dist = innerR + Math.random() * (outerR - innerR);
+            const c = Math.round(centerC + Math.cos(angle) * dist);
+            const r = Math.round(centerR + Math.sin(angle) * dist);
+
+            // Bounds check
+            if (c < 0 || c >= cols || r < 0 || r >= rows) continue;
+            if (isLocationOnPath(c, r)) continue;
+
+            // Dispersion & Spacing: check distance to ALL points on ALL paths
+            let minDist = Infinity;
+            let meetsGlobalSpacing = true;
+
+            if (paths.length === 0) {
+                minDist = Math.hypot(c - centerC, r - centerR);
+            } else {
+                for (const path of paths) {
+                    for (const pt of path.points) {
+                        const d = Math.hypot(c - (pt.x / GRID_SIZE), r - (pt.y / GRID_SIZE));
+                        if (d < minDist) minDist = d;
+                        // NEW: 1.5-unit absolute spacing constraint between rifts
+                        if (d < 1.5) {
+                            meetsGlobalSpacing = false;
+                            break;
+                        }
+                    }
+                    if (!meetsGlobalSpacing) break;
                 }
+            }
+
+            if (!meetsGlobalSpacing) continue;
+
+            zoneHasCandidates = true;
+            if (minDist > maxMinDistForZone) {
+                maxMinDistForZone = minDist;
+                bestStartNode = { c, r };
             }
         }
 
-        if (minDist > maxMinDist) {
-            maxMinDist = minDist;
-            bestStartNode = { c, r };
+        if (zoneHasCandidates && bestStartNode) {
+            foundZone = zoneIndex;
+            break; // Found valid spot in this zone, stop searching higher zones
         }
     }
 
-    const startNode = bestStartNode || { c: 0, r: 0 };
+    if (!bestStartNode) {
+        console.warn("[MISSION FAILED] Orbital Saturation: No valid rift locations found.");
+        return;
+    }
+
+    const startNode = bestStartNode;
 
     // 2. TARGET SELECTION (Merge or Base)
     let targetNode = endNode;
     let mergePathIndex = -1;
     let mergePointIndex = -1;
-    let bestDistToBase = Math.hypot(startNode.c - endNode.c, startNode.r - endNode.r);
+
+    // Probability of Direct Core Mission: 100% for Zone 1, 50% for Zone 2, 25% for Zone 3...
+    const directProb = 1.0 / Math.pow(2, foundZone - 1);
+    const isDirectMission = Math.random() < directProb;
 
     const minExpansionDist = 12;
 
-    // Piercing Rule: First 10 rifts and 30% of others target the Base directly
-    const isDirectMission = paths.length < 10 || Math.random() < 0.3;
-
     if (!isDirectMission) {
+        let minMergeDist = Infinity;
+
         for (let i = 0; i < paths.length; i++) {
             const path = paths[i];
             for (let j = 0; j < path.points.length; j++) {
@@ -1735,16 +1779,23 @@ function generateNewPath() {
                 const pr = Math.floor(pt.y / GRID_SIZE);
 
                 const dToSpawn = Math.hypot(startNode.c - pc, startNode.r - pr);
+
+                // Must meet minimum length to prevent tiny stub rifts
                 if (dToSpawn < minExpansionDist) continue;
 
-                // Heuristic: Prefer merges that are significantly closer to the spawn than the base is
-                if (dToSpawn < bestDistToBase * 0.7) {
-                    bestDistToBase = dToSpawn;
+                // Pick the absolute closest point on any path
+                if (dToSpawn < minMergeDist) {
+                    minMergeDist = dToSpawn;
                     targetNode = { c: pc, r: pr };
                     mergePathIndex = i;
                     mergePointIndex = j;
                 }
             }
+        }
+
+        // If no valid merge point found, fallback to base
+        if (mergePathIndex === -1) {
+            targetNode = endNode;
         }
     }
 
@@ -1757,7 +1808,7 @@ function generateNewPath() {
             newPathPoints.push(...continuation);
         }
 
-        paths.push({ points: newPathPoints, level: 1 });
+        paths.push({ points: newPathPoints, level: 1, zone: foundZone });
 
         // DESTROY TOWERS ON PATH
         for (let i = towers.length - 1; i >= 0; i--) {
@@ -2787,8 +2838,52 @@ function draw() {
     ctx.stroke();
 
 
+    // --- Spatial Zoning Overlay (Debug) ---
+    if (showNoBuildOverlay && paths.length > 0 && paths[0].points.length > 0) {
+        const base = paths[0].points[paths[0].points.length - 1];
 
-    // Draw Paths
+        // 1. Draw Concentric Zones
+        ctx.save();
+        ctx.setLineDash([10, 5]);
+        ctx.lineWidth = 2;
+
+        // Zone 0 (No Rift Zone) - 6 units
+        ctx.strokeStyle = 'rgba(255, 0, 0, 0.4)';
+        ctx.beginPath();
+        ctx.arc(base.x, base.y, 6 * GRID_SIZE, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(255, 0, 0, 0.05)';
+        ctx.fill();
+
+        // Extended Zones (every 3 units)
+        for (let r = 9; r < 60; r += 3) {
+            const zi = Math.floor((r - 6) / 3);
+            ctx.strokeStyle = (zi === selectedZone) ? 'rgba(250, 238, 10, 0.8)' : 'rgba(0, 243, 255, 0.2)';
+            ctx.lineWidth = (zi === selectedZone) ? 4 : 2;
+            ctx.beginPath();
+            ctx.arc(base.x, base.y, r * GRID_SIZE, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+        ctx.restore();
+
+        // 2. Draw Path Buffers (No Build Zone - 1.5 units)
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255, 0, 0, 0.3)';
+        ctx.lineWidth = GRID_SIZE * 3; // 1.5 units each side = 3 units total
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        for (let pathData of paths) {
+            const path = pathData.points;
+            ctx.beginPath();
+            ctx.moveTo(path[0].x, path[0].y);
+            for (let i = 1; i < path.length; i++) {
+                ctx.lineTo(path[i].x, path[i].y);
+            }
+            ctx.stroke();
+        }
+        ctx.restore();
+    }
     for (let pathData of paths) {
         const path = pathData.points;
         const riftLevel = pathData.level || 1;
@@ -2802,17 +2897,22 @@ function draw() {
 
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
-        ctx.lineWidth = GRID_SIZE * 0.8;
-        ctx.shadowBlur = 10;
+
+        const isSelected = (pathData === selectedRift) || (pathData.zone === selectedZone);
+        ctx.lineWidth = GRID_SIZE * (isSelected ? 1.6 : 0.8);
+        ctx.shadowBlur = isSelected ? 30 : 10;
 
         let pathColor = mutation ? mutation.color : (riftLevel > 1 ? 'rgba(255, 0, 172, 0.4)' : 'rgba(0, 243, 255, 0.1)');
+        if (isSelected) pathColor = mutation ? mutation.color : (riftLevel > 1 ? '#ff00ac' : '#00f3ff');
+
         ctx.shadowColor = pathColor;
         ctx.strokeStyle = mutation ? `${mutation.color}11` : (riftLevel > 1 ? 'rgba(255, 0, 172, 0.1)' : 'rgba(0, 243, 255, 0.05)');
+        if (isSelected) ctx.strokeStyle = pathColor + '33';
         ctx.stroke();
         ctx.shadowBlur = 0;
 
         // Center Line
-        ctx.lineWidth = 2;
+        ctx.lineWidth = isSelected ? 4 : 2;
         ctx.strokeStyle = mutation ? mutation.color : (riftLevel > 1 ? '#ff00ac' : '#00f3ff');
         ctx.setLineDash([10, 10]);
         ctx.stroke();
