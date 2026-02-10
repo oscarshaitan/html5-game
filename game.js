@@ -1638,10 +1638,6 @@ function generateMutation() {
 }
 
 function generateNewPath() {
-    // Generate an INDEPENDENT path to the base
-
-    // Generate an INDEPENDENT path to the base
-
     // Target: Center (Base)
     const cols = Math.floor(width / GRID_SIZE);
     const rows = Math.floor(height / GRID_SIZE);
@@ -1649,16 +1645,14 @@ function generateNewPath() {
     let centerC = Math.floor(cols / 2);
     let centerR = Math.floor(rows / 2);
 
-    // If we have an existing path, the base is at the end of it.
-    // We MUST target that same spot, even if the window resized and logical center shifted.
     if (paths.length > 0 && paths[0].points.length > 0) {
         const p = paths[0].points;
-        const base = p[p.length - 1]; // Last point is base
+        const base = p[p.length - 1];
         centerC = Math.floor(base.x / GRID_SIZE);
         centerR = Math.floor(base.y / GRID_SIZE);
     }
 
-    const endNode = { c: centerC, r: centerR }; // Always path to center (or existing base)
+    const endNode = { c: centerC, r: centerR };
 
     // Helper to check if grid cell is occupied by any existing path
     const isLocationOnPath = (c, r) => {
@@ -1672,58 +1666,80 @@ function generateNewPath() {
         return false;
     };
 
-    // 1. Pick Valid Start
-    let startNode = null;
-    let attempts = 0;
+    // 1. Pick Best Candidate Start (Soft Edge + Body-Relative Dispersion)
+    let bestStartNode = null;
+    let maxMinDist = -Infinity;
+    const candidatesCount = 40;
 
-    while (!startNode && attempts < 200) {
-        const c = Math.floor(Math.random() * cols);
-        const r = Math.floor(Math.random() * rows);
+    // Allow spawning in the outer 30% to ensure some "middle-ground" presence
+    const edgeMarginC = Math.max(2, Math.floor(cols * 0.3));
+    const edgeMarginR = Math.max(2, Math.floor(rows * 0.3));
 
-        // Check 1: Distance >= 10 from base
-        const dist = Math.hypot(c - centerC, r - centerR);
-
-        // Check 2: Not on existing path
-        if (dist >= 10 && !isLocationOnPath(c, r)) {
-            startNode = { c: c, r: r };
+    for (let i = 0; i < candidatesCount; i++) {
+        let c, r;
+        const side = Math.floor(Math.random() * 4);
+        if (side === 0) { // Left-ish margin
+            c = Math.floor(Math.random() * edgeMarginC);
+            r = Math.floor(Math.random() * rows);
+        } else if (side === 1) { // Right-ish margin
+            c = cols - 1 - Math.floor(Math.random() * edgeMarginC);
+            r = Math.floor(Math.random() * rows);
+        } else if (side === 2) { // Top-ish margin
+            r = Math.floor(Math.random() * edgeMarginR);
+            c = Math.floor(Math.random() * cols);
+        } else { // Bottom-ish margin
+            r = rows - 1 - Math.floor(Math.random() * edgeMarginR);
+            c = Math.floor(Math.random() * cols);
         }
-        attempts++;
+
+        if (isLocationOnPath(c, r)) continue;
+
+        // Dispersion: favor candidates farthest from ALL points on ALL paths
+        let minDist = Infinity;
+        if (paths.length === 0) {
+            minDist = Math.hypot(c - centerC, r - centerR);
+        } else {
+            for (const path of paths) {
+                for (const pt of path.points) {
+                    const d = Math.hypot(c - (pt.x / GRID_SIZE), r - (pt.y / GRID_SIZE));
+                    if (d < minDist) minDist = d;
+                }
+            }
+        }
+
+        if (minDist > maxMinDist) {
+            maxMinDist = minDist;
+            bestStartNode = { c, r };
+        }
     }
 
-    if (!startNode) {
-        console.warn("Could not find valid spawn location for new path.");
-        return;
-    }
+    const startNode = bestStartNode || { c: 0, r: 0 };
 
-    // 3. TARGET SELECTION (Merge or Base)
-    // We want to find a target. It can be the base OR a point on another path.
-    // To encourage merging, we look for closest point on existing paths.
-
+    // 2. TARGET SELECTION (Merge or Base)
     let targetNode = endNode;
     let mergePathIndex = -1;
     let mergePointIndex = -1;
-    let bestDist = Math.hypot(startNode.c - endNode.c, startNode.r - endNode.r);
+    let bestDistToBase = Math.hypot(startNode.c - endNode.c, startNode.r - endNode.r);
 
-    // If there are paths, try to merge
-    if (paths.length > 0) {
-        // Find closest point on any existing path
+    const minExpansionDist = 12;
+
+    // Piercing Rule: First 10 rifts and 30% of others target the Base directly
+    const isDirectMission = paths.length < 10 || Math.random() < 0.3;
+
+    if (!isDirectMission) {
         for (let i = 0; i < paths.length; i++) {
             const path = paths[i];
-            // Don't merge too close to start (avoid immediate merge)
-            // Don't merge too close to base (might as well go to base)
-            // Iterate points. convert to grid lines.
-
             for (let j = 0; j < path.points.length; j++) {
-                const p = path.points[j];
-                const pc = Math.floor(p.x / GRID_SIZE);
-                const pr = Math.floor(p.y / GRID_SIZE);
+                const pt = path.points[j];
+                const pc = Math.floor(pt.x / GRID_SIZE);
+                const pr = Math.floor(pt.y / GRID_SIZE);
 
-                const d = Math.hypot(startNode.c - pc, startNode.r - pr);
+                const dToSpawn = Math.hypot(startNode.c - pc, startNode.r - pr);
+                if (dToSpawn < minExpansionDist) continue;
 
-                // Heuristic: shorter distance than to base?
-                // Also add some random bias to favor merging vs direct
-                if (d < bestDist * 0.8) {
-                    bestDist = d;
+                // Heuristic: Prefer merges that are significantly closer to the spawn than the base is
+                if (dToSpawn < bestDistToBase * 0.7) {
+                    bestDistToBase = dToSpawn;
                     targetNode = { c: pc, r: pr };
                     mergePathIndex = i;
                     mergePointIndex = j;
@@ -1732,20 +1748,11 @@ function generateNewPath() {
         }
     }
 
-    // 4. PATHFINDING
-    // Use a modified BFS or A* that adds cost to straight lines to encourage turns?
-    // Or simpler: BFS with random tie-breaking is already somewhat zigzaggy?
-    // Actually standard BFS on grid is usually L-shaped or Z-shaped depending on order of neighbors.
-    // To get "diverse" paths, we can shuffle neighbors or add random weights.
-    // Let's rely on findPathOnGrid having randomized neighbor order.
-
     const newPathPoints = findPathOnGrid(startNode, targetNode, []);
 
     if (newPathPoints) {
-        // If merging, we append the rest of the target path
         if (mergePathIndex !== -1) {
             const targetPath = paths[mergePathIndex];
-            // Add points from merge index + 1 to end
             const continuation = targetPath.points.slice(mergePointIndex + 1);
             newPathPoints.push(...continuation);
         }
@@ -1753,59 +1760,27 @@ function generateNewPath() {
         paths.push({ points: newPathPoints, level: 1 });
 
         // DESTROY TOWERS ON PATH
-        // Check for collisions and sell
-        // We iterate backwards to safely remove from array
         for (let i = towers.length - 1; i >= 0; i--) {
             const t = towers[i];
             const tolerance = GRID_SIZE / 2;
             let hit = false;
 
-            // Generate grid coords for new path for reliable overlap check?
-            // Or use existing segment overlap logic.
-            // Existing segment logic works fine for grid alignment.
-
             for (let j = 0; j < newPathPoints.length - 1; j++) {
                 const p1 = newPathPoints[j];
                 const p2 = newPathPoints[j + 1];
-                // Horizontal segment
-                if (Math.abs(p1.y - p2.y) < 1) {
-                    if (Math.abs(t.y - p1.y) < tolerance &&
-                        t.x >= Math.min(p1.x, p2.x) - tolerance &&
-                        t.x <= Math.max(p1.x, p2.x) + tolerance) {
-                        hit = true;
-                        break;
-                    }
-                }
-                // Vertical segment
-                else {
-                    if (Math.abs(t.x - p1.x) < tolerance &&
-                        t.y >= Math.min(p1.y, p2.y) - tolerance &&
-                        t.y <= Math.max(p1.y, p2.y) + tolerance) {
-                        hit = true;
-                        break;
-                    }
+                if (Math.abs(p1.y - p2.y) < 1) { // Horizontal
+                    if (Math.abs(t.y - p1.y) < tolerance && t.x >= Math.min(p1.x, p2.x) - tolerance && t.x <= Math.max(p1.x, p2.x) + tolerance) { hit = true; break; }
+                } else { // Vertical
+                    if (Math.abs(t.x - p1.x) < tolerance && t.y >= Math.min(p1.y, p2.y) - tolerance && t.y <= Math.max(p1.y, p2.y) + tolerance) { hit = true; break; }
                 }
             }
 
             if (hit) {
-                // Sell logic (manual call to avoid UI dep or just direct removal)
-                // Refund 70%
-                money += Math.floor(t.totalCost || t.cost * 0.7); // Use totalCost if tracked, else estimate
-                // Actually upgrade logic didn't track totalCost, just level.
-                // Let's just do cost * level * 0.7 approx
-                // towers have 'cost' (base cost).
-                // upgrade cost is cost * 1.5 * (level-1) sum? 
-                // Let's just refund current value logic: (cost * 0.7) * level for simplicity
-
-                money += Math.floor((t.cost * t.level) * 0.2); // Bonus refund for upgrades? 
-                // Actually let's just use the sellTower calculation if we can
-                // const refund = Math.floor(t.cost * 0.7); -> This is base cost only.
-
-                createParticles(t.x, t.y, '#fff', 10); // Explosion effect
+                money += Math.floor((t.cost * t.level) * 0.7);
+                createParticles(t.x, t.y, '#fff', 10);
                 towers.splice(i, 1);
             }
         }
-
         updateUI();
     }
 }
@@ -1814,50 +1789,74 @@ function findPathOnGrid(start, end, obstacles) {
     const cols = Math.floor(width / GRID_SIZE);
     const rows = Math.floor(height / GRID_SIZE);
 
-    const queue = [];
-    queue.push([start]);
-    const visited = new Set();
-    visited.add(start.c + ',' + start.r);
+    const startNode = { c: start.c, r: start.r };
+    const endNode = { c: end.c, r: end.r };
 
-    while (queue.length > 0) {
-        const path = queue.shift();
-        const pos = path[path.length - 1];
+    const openSet = [];
+    openSet.push({
+        c: startNode.c, r: startNode.r, g: 0,
+        h: Math.abs(startNode.c - endNode.c) + Math.abs(startNode.r - endNode.r),
+        f: Math.abs(startNode.c - endNode.c) + Math.abs(startNode.r - endNode.r),
+        parent: null, dir: null
+    });
 
-        if (pos.c === end.c && pos.r === end.r) {
-            return path.map(p => ({
-                x: p.c * GRID_SIZE + GRID_SIZE / 2,
-                y: p.r * GRID_SIZE + GRID_SIZE / 2
-            }));
+    const closedSet = new Map();
+
+    while (openSet.length > 0) {
+        let bestIndex = 0;
+        for (let i = 1; i < openSet.length; i++) {
+            if (openSet[i].f < openSet[bestIndex].f) bestIndex = i;
         }
+        const current = openSet.splice(bestIndex, 1)[0];
+
+        if (current.c === endNode.c && current.r === endNode.r) {
+            const pathPoints = [];
+            let temp = current;
+            while (temp) {
+                pathPoints.unshift({ x: temp.c * GRID_SIZE + GRID_SIZE / 2, y: temp.r * GRID_SIZE + GRID_SIZE / 2 });
+                temp = temp.parent;
+            }
+            return pathPoints;
+        }
+
+        const key = `${current.c},${current.r}`;
+        closedSet.set(key, current.g);
 
         const neighbors = [
-            { c: pos.c, r: pos.r - 1 },
-            { c: pos.c + 1, r: pos.r },
-            { c: pos.c, r: pos.r + 1 },
-            { c: pos.c - 1, r: pos.r }
+            { c: current.c, r: current.r - 1, dc: 0, dr: -1 },
+            { c: current.c + 1, r: current.r, dc: 1, dr: 0 },
+            { c: current.c, r: current.r + 1, dc: 0, dr: 1 },
+            { c: current.c - 1, r: current.r, dc: -1, dr: 0 }
         ];
-
-        // SHUFFLE NEIGHBORS to create diverse path shapes
-        for (let i = neighbors.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [neighbors[i], neighbors[j]] = [neighbors[j], neighbors[i]];
-        }
 
         for (const n of neighbors) {
             if (n.c >= 0 && n.c < cols && n.r >= 0 && n.r < rows) {
-                const key = n.c + ',' + n.r;
-                if (!visited.has(key)) {
-                    let blocked = false;
-                    for (const ob of obstacles) {
-                        if (ob.x === n.c && ob.y === n.r) {
-                            blocked = true; break;
+                let blocked = false;
+                for (const ob of obstacles) { if (ob.x === n.c && ob.y === n.r) { blocked = true; break; } }
+                if (blocked) continue;
+
+                const nKey = `${n.c},${n.r}`;
+                let cost = 1;
+                if (current.dir && (current.dir.dc !== n.dc || current.dir.dr !== n.dr)) {
+                    cost += 5; // Reduced turn penalty for better map coverage
+                }
+
+                const g = current.g + cost;
+                if (closedSet.has(nKey) && closedSet.get(nKey) <= g) continue;
+
+                let inOpen = false;
+                for (const node of openSet) {
+                    if (node.c === n.c && node.r === n.r) {
+                        if (node.g > g) {
+                            node.g = g; node.f = g + node.h; node.parent = current; node.dir = { dc: n.dc, dr: n.dr };
                         }
+                        inOpen = true; break;
                     }
-                    if (!blocked) {
-                        visited.add(key);
-                        const newPath = [...path, n];
-                        queue.push(newPath);
-                    }
+                }
+
+                if (!inOpen) {
+                    const h = Math.abs(n.c - endNode.c) + Math.abs(n.r - endNode.r);
+                    openSet.push({ c: n.c, r: n.r, g: g, h: h, f: g + h, parent: current, dir: { dc: n.dc, dr: n.dr } });
                 }
             }
         }
@@ -1876,7 +1875,8 @@ window.selectTower = function (type) {
     selectedPlacedTower = null;
     selectedBase = false;
     document.querySelectorAll('.tower-selector').forEach(el => el.classList.remove('selected'));
-    document.querySelector(`.tower-selector[data-type="${type}"]`).classList.add('selected');
+    const targetEl = document.querySelector(`.tower-selector[data-type="${type}"]`);
+    if (targetEl) targetEl.classList.add('selected');
 };
 
 function selectPlacedTower(tower) {
@@ -1892,8 +1892,8 @@ window.deselectTower = function () {
     selectedBase = false;
     selectedRift = null;
     buildTarget = null;
-    document.getElementById('controls-bar').classList.add('hidden');
-    document.getElementById('selection-panel').classList.add('hidden');
+    document.getElementById('controls-bar')?.classList.add('hidden');
+    document.getElementById('selection-panel')?.classList.add('hidden');
     updateUI();
     updateSelectionUI();
 };
@@ -1906,7 +1906,7 @@ window.upgradeTower = function () {
         selectedPlacedTower.level++;
         selectedPlacedTower.damage *= 1.2;
         selectedPlacedTower.range *= 1.1;
-        selectedPlacedTower.totalCost += cost;
+        selectedPlacedTower.totalCost = (selectedPlacedTower.totalCost || (selectedPlacedTower.cost * (selectedPlacedTower.level - 1))) + cost;
         createParticles(selectedPlacedTower.x, selectedPlacedTower.y, '#00ff41', 15);
         updateSelectionUI();
         updateUI();
@@ -1916,20 +1916,14 @@ window.upgradeTower = function () {
 
 window.sellTower = function () {
     if (!selectedPlacedTower) return;
-
-    const refund = Math.floor(selectedPlacedTower.totalCost * 0.7);
+    const refund = Math.floor((selectedPlacedTower.totalCost || selectedPlacedTower.cost) * 0.7);
     money += refund;
-
-    // Remove tower
     const index = towers.indexOf(selectedPlacedTower);
-    if (index > -1) {
-        towers.splice(index, 1);
-    }
-
+    if (index > -1) towers.splice(index, 1);
     createParticles(selectedPlacedTower.x, selectedPlacedTower.y, '#ffffff', 10);
     deselectTower();
     updateUI();
-    saveGame(); // Save on sell
+    saveGame();
 };
 
 function getUpgradeCost(tower) {
@@ -2049,7 +2043,7 @@ function updateSelectionUI() {
     // --- Render Tower Selection UI ---
     const t = selectedPlacedTower;
     const upgradeCost = getUpgradeCost(t);
-    const refund = Math.floor(t.totalCost * 0.7);
+    const refund = Math.floor((t.totalCost || t.cost) * 0.7);
 
     panel.classList.remove('hidden');
     panel.innerHTML = `
