@@ -1834,9 +1834,9 @@ function generateNewPath() {
     // Electron Shell Capacities: 2, 8, 18, 32... (2 * n^2)
     // We search through zones [6-9, 9-12, 12-15...] in order
     for (let zoneIndex = 1; zoneIndex <= 15; zoneIndex++) {
-        // Count existing rifts in this zone
+        // Electron Shell Capacities: Tightened for inner zones
         const zoneRiftCount = paths.filter(p => p.zone === zoneIndex).length;
-        const zoneCapacity = 2 * (zoneIndex * zoneIndex);
+        const zoneCapacity = zoneIndex === 1 ? 1 : zoneIndex + 1; // Zone 1: 1, Zone 2: 3, Zone 3: 4
 
         if (zoneRiftCount >= zoneCapacity) continue; // Orbit is full!
 
@@ -1867,8 +1867,8 @@ function generateNewPath() {
                     for (const pt of path.points) {
                         const d = Math.hypot(c - (pt.x / GRID_SIZE), r - (pt.y / GRID_SIZE));
                         if (d < minDist) minDist = d;
-                        // NEW: 1.5-unit absolute spacing constraint between rifts
-                        if (d < 1.5) {
+                        // INCREASED Global Spacing: 2.5-unit absolute spacing constraint between rifts
+                        if (d < 2.5) {
                             meetsGlobalSpacing = false;
                             break;
                         }
@@ -1904,8 +1904,8 @@ function generateNewPath() {
     let mergePathIndex = -1;
     let mergePointIndex = -1;
 
-    // Probability of Direct Core Mission: 100% for Zone 1, 50% for Zone 2, 25% for Zone 3...
-    const directProb = 1.0 / Math.pow(2, foundZone - 1);
+    // Probability of Direct Core Mission: Aggressively decayed to favor merging
+    const directProb = 0.5 / (foundZone * foundZone); // Zone 1: 50%, Zone 2: 12.5%
     const isDirectMission = Math.random() < directProb;
 
     const minExpansionDist = 12;
