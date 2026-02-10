@@ -3043,9 +3043,18 @@ function draw() {
 }
 
 window.resetCamera = function () {
-    camera.x = 0;
-    camera.y = 0;
-    camera.zoom = 1;
+    if (paths.length > 0) {
+        const p = paths[0].points;
+        const base = p[p.length - 1];
+
+        camera.zoom = 1;
+        camera.x = (width / 2) - (base.x * camera.zoom);
+        camera.y = (height / 2) - (base.y * camera.zoom);
+    } else {
+        camera.x = 0;
+        camera.y = 0;
+        camera.zoom = 1;
+    }
 };
 
 function drawTowerOne(type, x, y, color) {
