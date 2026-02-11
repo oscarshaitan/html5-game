@@ -129,6 +129,8 @@ let tutorialStep = 0;
 let completedTutorial = localStorage.getItem('neonDefenseTutorialComplete') === 'true';
 const tutorialSeenKey = 'neonDefenseTutorialSeen';
 const onboardingHintKey = 'neonDefenseOnboardingHints';
+const onboardingHintVersionKey = 'neonDefenseOnboardingHintsVersion';
+const onboardingHintVersion = 3;
 let onboardingHintsSeen = {};
 let hintQueue = [];
 let hintQueuedKeys = new Set();
@@ -137,10 +139,19 @@ let hintHideTimer = null;
 let hintResetTimer = null;
 
 try {
-    const storedHints = JSON.parse(localStorage.getItem(onboardingHintKey) || '{}');
-    if (storedHints && typeof storedHints === 'object') onboardingHintsSeen = storedHints;
+    const savedVersion = Number(localStorage.getItem(onboardingHintVersionKey) || '0');
+    if (savedVersion !== onboardingHintVersion) {
+        onboardingHintsSeen = {};
+        localStorage.setItem(onboardingHintVersionKey, String(onboardingHintVersion));
+        localStorage.setItem(onboardingHintKey, JSON.stringify(onboardingHintsSeen));
+    } else {
+        const storedHints = JSON.parse(localStorage.getItem(onboardingHintKey) || '{}');
+        if (storedHints && typeof storedHints === 'object') onboardingHintsSeen = storedHints;
+    }
 } catch (_) {
     onboardingHintsSeen = {};
+    localStorage.setItem(onboardingHintVersionKey, String(onboardingHintVersion));
+    localStorage.setItem(onboardingHintKey, JSON.stringify(onboardingHintsSeen));
 }
 
 function saveOnboardingHints() {
@@ -205,6 +216,11 @@ function maybeShowCameraHint() {
 function maybeShowRiftHint() {
     if (gameState !== 'playing') return;
     queueOnboardingHint('rift_intel', 'Tap rifts to view threat multipliers and sector intel.');
+}
+
+function maybeShowTowerHint() {
+    if (gameState !== 'playing') return;
+    queueOnboardingHint('tower_intel', 'Tower intel: tap a placed tower to inspect stats, then upgrade or sell.');
 }
 
 // --- Base State ---
@@ -1161,12 +1177,16 @@ window.resetGame = function () {
 window.fullReset = function () {
     localStorage.removeItem('neonDefenseSave');
     localStorage.removeItem('neonDefenseTutorialComplete');
+    localStorage.removeItem(onboardingHintKey);
+    localStorage.removeItem(onboardingHintVersionKey);
     location.reload();
 };
 
 window.resetTutorial = function () {
     localStorage.removeItem('neonDefenseTutorialComplete');
     localStorage.removeItem(tutorialSeenKey);
+    localStorage.removeItem(onboardingHintKey);
+    localStorage.removeItem(onboardingHintVersionKey);
     location.reload();
 };
 
@@ -2247,6 +2267,7 @@ function selectPlacedTower(tower) {
     selectedBase = false;
     document.querySelectorAll('.tower-selector').forEach(el => el.classList.remove('selected'));
     updateSelectionUI();
+    maybeShowTowerHint();
 }
 
 window.deselectTower = function () {
