@@ -107,7 +107,7 @@ let isWaveActive = false;
 let totalKills = { basic: 0, fast: 0, tank: 0, boss: 0, splitter: 0, mini: 0, bulwark: 0, shifter: 0 };
 
 // --- Player Profile & Stats ---
-let playerName = null;
+let playerName = localStorage.getItem('neonDefensePlayerName') || null;
 let prepTimer = 30; // seconds
 let frameCount = 0;
 let energy = 0;
@@ -127,6 +127,85 @@ let selectedZone = -1; // -1 means no zone highlighted
 let tutorialActive = false;
 let tutorialStep = 0;
 let completedTutorial = localStorage.getItem('neonDefenseTutorialComplete') === 'true';
+const tutorialSeenKey = 'neonDefenseTutorialSeen';
+const onboardingHintKey = 'neonDefenseOnboardingHints';
+let onboardingHintsSeen = {};
+let hintQueue = [];
+let hintQueuedKeys = new Set();
+let hintActive = false;
+let hintHideTimer = null;
+let hintResetTimer = null;
+
+try {
+    const storedHints = JSON.parse(localStorage.getItem(onboardingHintKey) || '{}');
+    if (storedHints && typeof storedHints === 'object') onboardingHintsSeen = storedHints;
+} catch (_) {
+    onboardingHintsSeen = {};
+}
+
+function saveOnboardingHints() {
+    localStorage.setItem(onboardingHintKey, JSON.stringify(onboardingHintsSeen));
+}
+
+function canShowInlineHints() {
+    return gameState === 'playing' && !tutorialActive && !isPaused;
+}
+
+function showNextHint() {
+    if (hintActive || hintQueue.length === 0) return;
+    if (!canShowInlineHints()) return;
+
+    const hintEl = document.getElementById('inline-hint');
+    if (!hintEl) return;
+
+    const next = hintQueue.shift();
+    hintQueuedKeys.delete(next.key);
+    onboardingHintsSeen[next.key] = true;
+    saveOnboardingHints();
+
+    hintActive = true;
+    hintEl.textContent = next.text;
+    hintEl.classList.remove('hidden');
+    void hintEl.offsetWidth;
+    hintEl.classList.add('visible');
+
+    clearTimeout(hintHideTimer);
+    clearTimeout(hintResetTimer);
+
+    hintHideTimer = setTimeout(() => {
+        hintEl.classList.remove('visible');
+        hintResetTimer = setTimeout(() => {
+            hintEl.classList.add('hidden');
+            hintActive = false;
+            showNextHint();
+        }, 220);
+    }, next.duration || 3600);
+}
+
+function queueOnboardingHint(key, text, duration = 3600) {
+    if (!key || onboardingHintsSeen[key] || hintQueuedKeys.has(key)) return;
+    hintQueuedKeys.add(key);
+    hintQueue.push({ key, text, duration });
+    showNextHint();
+}
+
+function maybeShowAbilityHint() {
+    if (gameState !== 'playing') return;
+    const abilityReady = Object.values(abilities).some(a => energy >= a.cost && a.cooldown <= 0);
+    if (abilityReady) {
+        queueOnboardingHint('ability_ready', 'Ability ready: press 1/2 or tap an ability icon.');
+    }
+}
+
+function maybeShowCameraHint() {
+    if (gameState !== 'playing') return;
+    queueOnboardingHint('camera_controls', 'Camera controls: drag to pan, pinch/wheel to zoom, recenter to reset.');
+}
+
+function maybeShowRiftHint() {
+    if (gameState !== 'playing') return;
+    queueOnboardingHint('rift_intel', 'Tap rifts to view threat multipliers and sector intel.');
+}
 
 // --- Base State ---
 let baseLevel = 0; // 0 = No turret, 1+ = Turret active
@@ -460,11 +539,6 @@ window.onload = () => {
     // Init Audio UI from saved settings
     AudioEngine.updateSoundUI();
 
-    // Start Tutorial if not completed
-    if (!completedTutorial) {
-        startTutorial();
-    }
-
     // Hotkeys
     window.addEventListener('keydown', (e) => {
         if (gameState !== 'playing') return;
@@ -495,7 +569,7 @@ window.onload = () => {
                 if (selectionVisible && selectedPlacedTower) sellTower();
                 break;
             case 'escape':
-                if (selectedPlacedTower || buildTarget) deselectTower();
+                if (selectedPlacedTower || buildTarget || selectedBase || selectedRift || targetingAbility || selectedTowerType) deselectTower();
                 else togglePause();
                 break;
         }
@@ -506,6 +580,10 @@ window.onload = () => {
 };
 
 function setupInput() {
+    const MOUSE_DRAG_THRESHOLD = 8;
+    const TOUCH_DRAG_THRESHOLD = 8;
+    let mouseDragDistance = 0;
+
     // Mouse Down (Start Drag)
     canvas.addEventListener('mousedown', (e) => {
         if (e.button === 0) { // Left click
@@ -514,6 +592,7 @@ function setupInput() {
             isDragging = true;
             lastMouseX = e.clientX;
             lastMouseY = e.clientY;
+            mouseDragDistance = 0;
         }
     });
 
@@ -529,8 +608,10 @@ function setupInput() {
             const dy = e.clientY - lastMouseY;
             camera.x += dx;
             camera.y += dy;
+            mouseDragDistance += Math.hypot(dx, dy);
             lastMouseX = e.clientX;
             lastMouseY = e.clientY;
+            maybeShowCameraHint();
         }
 
         // Apply Camera Transform to Mouse for Logic
@@ -546,13 +627,10 @@ function setupInput() {
     canvas.addEventListener('mouseup', (e) => {
         if (e.button === 0) {
             isDragging = false;
-            // If we barely moved, treat as click
-            // (Simple implementation: just always handle click if not a distinct drag action? 
-            //  For now, let's just handle click logic. If panning happens, it might click something. 
-            //  Ideally we track delta distance.)
-
-            // For now, allow click even if panned slightly, logic uses world coordinates
-            handleClick();
+            if (mouseDragDistance <= MOUSE_DRAG_THRESHOLD) {
+                handleClick();
+            }
+            mouseDragDistance = 0;
         }
     });
 
@@ -591,12 +669,14 @@ function setupInput() {
         // newCameraX = rawMouseX - (worldX * newZoom)
         camera.x = rawMouseX - (worldX * newZoom);
         camera.y = rawMouseY - (worldY * newZoom);
+        maybeShowCameraHint();
 
     }, { passive: false });
 
     // Touch support (Pan & Tap & Pinch Zoom)
     let touchStartX = 0;
     let touchStartY = 0;
+    let touchDragDistance = 0;
     let isTouchDragging = false;
     let initialPinchDist = null;
     let lastZoom = 1;
@@ -607,6 +687,7 @@ function setupInput() {
             const touch = e.touches[0];
             touchStartX = touch.clientX;
             touchStartY = touch.clientY;
+            touchDragDistance = 0;
             isTouchDragging = false;
 
             // Sync mouse pos for hover effects
@@ -632,16 +713,16 @@ function setupInput() {
             const touch = e.touches[0];
             const dx = touch.clientX - touchStartX;
             const dy = touch.clientY - touchStartY;
+            touchDragDistance += Math.hypot(dx, dy);
 
-            // Threshold to consider it a drag
-            if (Math.hypot(dx, dy) > 5) {
+            if (isTouchDragging || touchDragDistance > TOUCH_DRAG_THRESHOLD) {
                 isTouchDragging = true;
                 camera.x += dx;
                 camera.y += dy;
-
-                touchStartX = touch.clientX;
-                touchStartY = touch.clientY;
+                maybeShowCameraHint();
             }
+            touchStartX = touch.clientX;
+            touchStartY = touch.clientY;
         } else if (e.touches.length === 2 && initialPinchDist) {
             const t1 = e.touches[0];
             const t2 = e.touches[1];
@@ -669,6 +750,7 @@ function setupInput() {
 
                 camera.x = rawMidX - (worldX * newZoom);
                 camera.y = rawMidY - (worldY * newZoom);
+                maybeShowCameraHint();
             }
         }
     }, { passive: false });
@@ -684,6 +766,7 @@ function setupInput() {
             }
             isHovering = false; // Stop hovering after touch ends
             isTouchDragging = false;
+            touchDragDistance = 0;
         }
     }, { passive: false });
 
@@ -836,6 +919,11 @@ function handleClick() {
     }
 
     if (!occupied) {
+        // Toggle behavior: tapping the currently selected empty tile deselects it.
+        if (buildTarget && buildTarget.x === snap.x && buildTarget.y === snap.y) {
+            deselectTower();
+            return;
+        }
         selectBuildTarget(snap.x, snap.y);
         return;
     }
@@ -864,7 +952,7 @@ function selectBuildTarget(x, y) {
     // AudioEngine.playSFX('click'); 
 
     // Tutorial Step Advance
-    if (tutorialActive && tutorialStep === 1) {
+    if (tutorialActive && tutorialStep === 2) {
         nextTutorialStep();
     }
 }
@@ -887,6 +975,7 @@ function selectRift(rift) {
     selectedTowerType = null;
     document.querySelectorAll('.tower-selector').forEach(el => el.classList.remove('selected'));
     updateSelectionUI();
+    maybeShowRiftHint();
 }
 
 function deselectTower() {
@@ -973,6 +1062,8 @@ function resize() {
     if (gameState === 'start') {
         calculatePath();
     }
+
+    positionSelectionPanel();
 }
 
 function snapToGrid(x, y) {
@@ -1044,6 +1135,12 @@ function calculatePath() {
 }
 
 // --- Game Control ---
+function maybeStartFirstRunTutorial() {
+    const tutorialAlreadySeen = localStorage.getItem(tutorialSeenKey) === 'true';
+    if (tutorialAlreadySeen || completedTutorial) return;
+    localStorage.setItem(tutorialSeenKey, 'true');
+    startTutorial();
+}
 
 window.startGame = function () {
     AudioEngine.init(); // Initialize audio context on start
@@ -1051,7 +1148,7 @@ window.startGame = function () {
     resetGameLogic();
     gameState = 'playing';
     saveGame();
-    if (!completedTutorial) startTutorial();
+    maybeStartFirstRunTutorial();
 };
 
 window.resetGame = function () {
@@ -1069,6 +1166,7 @@ window.fullReset = function () {
 
 window.resetTutorial = function () {
     localStorage.removeItem('neonDefenseTutorialComplete');
+    localStorage.removeItem(tutorialSeenKey);
     location.reload();
 };
 
@@ -1078,6 +1176,7 @@ function togglePause() {
         document.getElementById('pause-menu').classList.remove('hidden');
     } else {
         document.getElementById('pause-menu').classList.add('hidden');
+        showNextHint();
     }
 }
 
@@ -1102,6 +1201,10 @@ function activateAbility(type) {
         selectedPlacedTower = null;
         selectedBase = false;
         selectedRift = null;
+        buildTarget = null;
+        document.querySelectorAll('.tower-selector').forEach(el => el.classList.remove('selected'));
+        document.getElementById('controls-bar')?.classList.add('hidden');
+        document.getElementById('selection-panel')?.classList.add('hidden');
     }
     updateUI();
 }
@@ -1266,7 +1369,8 @@ window.loadGame = function () {
     baseLevel = data.baseLevel || 0;
     baseCooldown = data.baseCooldown || 0;
     energy = data.energy || 0;
-    playerName = data.playerName || null;
+    playerName = data.playerName || playerName || localStorage.getItem('neonDefensePlayerName') || null;
+    if (playerName) localStorage.setItem('neonDefensePlayerName', playerName);
     totalKills = data.totalKills || { basic: 0, fast: 0, tank: 0, boss: 0, splitter: 0, mini: 0, bulwark: 0, shifter: 0 };
 
     // Restore towers
@@ -1284,7 +1388,7 @@ window.loadGame = function () {
     selectedTowerType = null;
     selectedBase = false;
 
-    playerName = data.playerName || null;
+    playerName = data.playerName || playerName || localStorage.getItem('neonDefensePlayerName') || null;
 
     // Hide start screen immediately when loading
     document.getElementById('start-screen').classList.add('hidden');
@@ -1328,22 +1432,19 @@ function savePlayerName() {
     const input = document.getElementById('player-name-input').value.trim();
     if (input) {
         playerName = input;
+        localStorage.setItem('neonDefensePlayerName', playerName);
         document.getElementById('name-entry-modal').classList.add('hidden');
-        saveGame();
 
-        // If we were loading, start the game loop for real
-        if (gameState === 'playing' || document.getElementById('start-screen').classList.contains('hidden')) {
-            // Already in a game or start screen hidden, just resume
-            // (Actually loadGame hasn't hidden start screen yet if name was missing)
+        const fromStartScreen = !document.getElementById('start-screen').classList.contains('hidden');
+        if (fromStartScreen) {
+            startGame();
+            return;
         }
 
-        // Standard start/resume path
-        document.getElementById('start-screen').classList.add('hidden');
         gameState = 'playing';
         AudioEngine.init(); // Init audio on name confirm click
         updateUI();
-
-        if (!completedTutorial) startTutorial();
+        saveGame();
     }
 }
 
@@ -1602,7 +1703,7 @@ function startWave() {
     document.getElementById('skip-btn').style.display = 'none';
 
     // Tutorial Step Advance
-    if (tutorialActive && tutorialStep === 3) {
+    if (tutorialActive && tutorialStep === 4) {
         nextTutorialStep();
     }
 
@@ -1720,7 +1821,13 @@ window.startTutorial = function () {
     tutorialStep = 0;
     isPaused = true; // Pause game logic during dialog
     const overlay = document.getElementById('tutorial-overlay');
-    if (overlay) overlay.classList.remove('hidden');
+    if (overlay) {
+        overlay.classList.remove('hidden');
+        overlay.classList.remove('allow-game-input');
+        overlay.style.pointerEvents = 'auto';
+        const box = overlay.querySelector('.tutorial-box');
+        if (box) box.style.pointerEvents = 'auto';
+    }
     updateTutorialBox();
 };
 
@@ -1733,16 +1840,32 @@ window.skipTutorial = function () {
     tutorialActive = false;
     isPaused = false; // Resume game
     const overlay = document.getElementById('tutorial-overlay');
-    if (overlay) overlay.classList.add('hidden');
+    if (overlay) {
+        overlay.classList.add('hidden');
+        overlay.classList.remove('allow-game-input');
+        overlay.style.pointerEvents = '';
+        const box = overlay.querySelector('.tutorial-box');
+        if (box) box.style.pointerEvents = '';
+    }
     localStorage.setItem('neonDefenseTutorialComplete', 'true');
     completedTutorial = true;
+    showNextHint();
 };
 
 let tutorialTypeInterval = null;
 function updateTutorialBox() {
     const msg = document.getElementById('tutorial-msg');
     const nextBtn = document.getElementById('tutorial-next-btn');
-    if (!msg || !nextBtn) return;
+    const skipBtn = document.getElementById('tutorial-skip-btn');
+    const overlay = document.getElementById('tutorial-overlay');
+    if (!msg || !nextBtn || !skipBtn || !overlay) return;
+    const box = overlay.querySelector('.tutorial-box');
+
+    nextBtn.style.display = 'none';
+    skipBtn.style.display = 'none';
+    overlay.classList.remove('allow-game-input');
+    overlay.style.pointerEvents = 'auto';
+    if (box) box.style.pointerEvents = 'auto';
 
     let text = "";
     switch (tutorialStep) {
@@ -1750,22 +1873,35 @@ function updateTutorialBox() {
             text = "Welcome, Commander. Our sector is under threat. We need to establish a defense perimeter immediately.";
             nextBtn.innerHTML = "UNDERSTOOD";
             nextBtn.style.display = 'block';
+            skipBtn.style.display = 'block';
             isPaused = true;
             break;
         case 1:
-            text = "First, select a tactical position. <strong>Tap an empty square</strong> on the grid near the Core to target it.";
-            nextBtn.style.display = 'none';
-            isPaused = false; // Allow interaction
+            text = "Command protocol loaded. You will now place your first defense node.";
+            nextBtn.innerHTML = "UNDERSTOOD";
+            nextBtn.style.display = 'block';
+            isPaused = true;
             break;
         case 2:
-            text = "Position locked. Now, <strong>choose a Tower type</strong> from the deployment panel below.";
-            nextBtn.style.display = 'none';
-            isPaused = false;
+            text = "First, select a tactical position. <strong>Tap an empty square</strong> on the grid near the Core to target it.";
+            isPaused = false; // Allow interaction
+            overlay.classList.add('allow-game-input');
+            overlay.style.pointerEvents = 'none';
+            if (box) box.style.pointerEvents = 'none';
             break;
         case 3:
-            text = "Defense initialized. When you're ready to engage the enemy, click <strong>START WAVE</strong>.";
-            nextBtn.style.display = 'none';
+            text = "Position locked. Now, <strong>choose a Tower type</strong> from the deployment panel below.";
             isPaused = false;
+            overlay.classList.add('allow-game-input');
+            overlay.style.pointerEvents = 'none';
+            if (box) box.style.pointerEvents = 'none';
+            break;
+        case 4:
+            text = "Defense initialized. When you're ready to engage the enemy, click <strong>START WAVE</strong>.";
+            isPaused = false;
+            overlay.classList.add('allow-game-input');
+            overlay.style.pointerEvents = 'none';
+            if (box) box.style.pointerEvents = 'none';
             break;
         default:
             finishTutorial();
@@ -1793,9 +1929,16 @@ function finishTutorial() {
     tutorialActive = false;
     isPaused = false; // Ensure game resumes
     const overlay = document.getElementById('tutorial-overlay');
-    if (overlay) overlay.classList.add('hidden');
+    if (overlay) {
+        overlay.classList.add('hidden');
+        overlay.classList.remove('allow-game-input');
+        overlay.style.pointerEvents = '';
+        const box = overlay.querySelector('.tutorial-box');
+        if (box) box.style.pointerEvents = '';
+    }
     localStorage.setItem('neonDefenseTutorialComplete', 'true');
     completedTutorial = true;
+    showNextHint();
 }
 
 function generateNewPath() {
@@ -2085,7 +2228,7 @@ window.selectTower = function (type) {
         deselectTower();
 
         // Tutorial Step Advance
-        if (tutorialActive && tutorialStep === 2) {
+        if (tutorialActive && tutorialStep === 3) {
             nextTutorialStep();
         }
         return;
@@ -2107,10 +2250,13 @@ function selectPlacedTower(tower) {
 }
 
 window.deselectTower = function () {
+    selectedTowerType = null;
     selectedPlacedTower = null;
     selectedBase = false;
     selectedRift = null;
+    targetingAbility = null;
     buildTarget = null;
+    document.querySelectorAll('.tower-selector').forEach(el => el.classList.remove('selected'));
     document.getElementById('controls-bar')?.classList.add('hidden');
     document.getElementById('selection-panel')?.classList.add('hidden');
     updateUI();
@@ -2147,6 +2293,63 @@ window.sellTower = function () {
 
 function getUpgradeCost(tower) {
     return Math.floor(tower.cost * 0.5 * tower.level);
+}
+
+function getSelectionAnchorWorldPos() {
+    if (selectedRift && selectedRift.points && selectedRift.points.length > 0) {
+        return selectedRift.points[0];
+    }
+
+    if (selectedBase) {
+        if (paths.length > 0 && paths[0].points.length > 0) {
+            const basePoint = paths[0].points[paths[0].points.length - 1];
+            return { x: basePoint.x, y: basePoint.y };
+        }
+
+        const cols = Math.floor(width / GRID_SIZE);
+        const rows = Math.floor(height / GRID_SIZE);
+        return {
+            x: Math.floor(cols / 2) * GRID_SIZE + GRID_SIZE / 2,
+            y: Math.floor(rows / 2) * GRID_SIZE + GRID_SIZE / 2
+        };
+    }
+
+    if (selectedPlacedTower) {
+        return { x: selectedPlacedTower.x, y: selectedPlacedTower.y };
+    }
+
+    return null;
+}
+
+function positionSelectionPanel(panel = document.getElementById('selection-panel')) {
+    if (!panel || panel.classList.contains('hidden')) return;
+
+    const anchor = getSelectionAnchorWorldPos();
+    if (!anchor) return;
+
+    const screenX = anchor.x * camera.zoom + camera.x;
+    const screenY = anchor.y * camera.zoom + camera.y;
+
+    const panelWidth = panel.offsetWidth || 220;
+    const panelHeight = panel.offsetHeight || 300;
+    const compactLayout = window.innerWidth <= 768;
+    const edgePadding = 12;
+
+    const offsetX = compactLayout ? 20 : 50;
+    const offsetY = compactLayout ? -Math.max(70, panelHeight * 0.35) : -100;
+
+    const maxLeft = Math.max(edgePadding, window.innerWidth - panelWidth - edgePadding);
+    const maxTop = Math.max(edgePadding, window.innerHeight - panelHeight - edgePadding);
+
+    const clampedLeft = Math.min(maxLeft, Math.max(edgePadding, screenX + offsetX));
+    const clampedTop = Math.min(maxTop, Math.max(edgePadding, screenY + offsetY));
+
+    panel.style.left = clampedLeft + 'px';
+    panel.style.top = clampedTop + 'px';
+    panel.style.bottom = 'auto';
+    panel.style.right = 'auto';
+    panel.style.marginRight = '0';
+    panel.style.transform = 'none';
 }
 
 function updateSelectionUI() {
@@ -2190,18 +2393,7 @@ function updateSelectionUI() {
                 <button class="action-btn close" onclick="deselectTower()" style="width: 100%;">CLOSE DISPATCH</button>
             </div>
         `;
-
-        // Position panel near rift spawn
-        const spawn = selectedRift.points[0];
-        const screenPos = {
-            x: spawn.x * camera.zoom + camera.x,
-            y: spawn.y * camera.zoom + camera.y
-        };
-        panel.style.left = Math.min(window.innerWidth - 220, Math.max(20, screenPos.x + 50)) + 'px';
-        panel.style.top = Math.min(window.innerHeight - 300, Math.max(20, screenPos.y - 100)) + 'px';
-        panel.style.bottom = 'auto';
-        panel.style.right = 'auto';
-        panel.style.marginRight = '0';
+        positionSelectionPanel(panel);
         return;
     }
 
@@ -2234,23 +2426,7 @@ function updateSelectionUI() {
                 <button class="action-btn close" onclick="deselectTower()" style="margin-top: 10px;">X</button>
             </div>
         `;
-
-        // Position panel near base (center)
-        const cols = Math.floor(width / GRID_SIZE);
-        const rows = Math.floor(height / GRID_SIZE);
-        const baseX = Math.floor(cols / 2) * GRID_SIZE + GRID_SIZE / 2;
-        const baseY = Math.floor(rows / 2) * GRID_SIZE + GRID_SIZE / 2;
-
-        const screenPos = {
-            x: baseX * camera.zoom + camera.x,
-            y: baseY * camera.zoom + camera.y
-        };
-
-        panel.style.left = Math.min(window.innerWidth - 220, Math.max(20, screenPos.x + 50)) + 'px';
-        panel.style.top = Math.min(window.innerHeight - 300, Math.max(20, screenPos.y - 100)) + 'px';
-        panel.style.bottom = 'auto';
-        panel.style.right = 'auto'; // Reset potential CSS fixed positioning
-        panel.style.marginRight = '0';
+        positionSelectionPanel(panel);
         return;
     }
 
@@ -2283,18 +2459,7 @@ function updateSelectionUI() {
             <button class="action-btn close" onclick="deselectTower()">X</button>
         </div>
     `;
-
-    // Position panel near selected tower
-    const screenPos = {
-        x: t.x * camera.zoom + camera.x,
-        y: t.y * camera.zoom + camera.y
-    };
-
-    panel.style.left = Math.min(window.innerWidth - 220, Math.max(20, screenPos.x + 50)) + 'px';
-    panel.style.top = Math.min(window.innerHeight - 300, Math.max(20, screenPos.y - 100)) + 'px';
-    panel.style.bottom = 'auto';
-    panel.style.right = 'auto';
-    panel.style.marginRight = '0';
+    positionSelectionPanel(panel);
 }
 
 function isValidPlacement(x, y, towerConfig) {
@@ -2390,6 +2555,7 @@ function gameLoop(timestamp) {
     if (gameState === 'playing' && !isPaused) {
         update(dt);
     }
+    positionSelectionPanel();
     draw();
 
     requestAnimationFrame(gameLoop);
@@ -2959,6 +3125,8 @@ function updateUI() {
             }
         }
     }
+
+    maybeShowAbilityHint();
 
     // Build Panel: Disable unaffordable towers
     document.querySelectorAll('.tower-selector').forEach(el => {

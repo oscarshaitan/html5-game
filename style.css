@@ -484,12 +484,69 @@ canvas {
     justify-content: center;
     pointer-events: auto;
     z-index: 90;
+    overflow-y: auto;
+    /* Fallback for extremely small screens */
+    padding: 20px 0;
 }
 
 .menu-buttons {
     display: flex;
     flex-direction: column;
     gap: 20px;
+    align-items: center;
+}
+
+/* Responsive adjustments for pause menu */
+@media (max-width: 768px),
+(max-height: 700px) {
+    #pause-menu h1 {
+        font-size: 2rem;
+        margin-bottom: 10px;
+        padding-top: 10px;
+    }
+
+    .menu-buttons {
+        gap: 12px;
+    }
+
+    .menu-buttons button,
+    .menu-link {
+        padding: 8px 20px;
+        font-size: 1rem;
+        width: 100%;
+        text-align: center;
+    }
+
+    .sound-settings {
+        margin-top: 5px;
+        padding: 10px;
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 8px;
+        width: 100%;
+    }
+
+    .sound-settings h3 {
+        font-size: 0.7rem;
+        margin-bottom: 8px;
+    }
+
+    .setting-item {
+        margin-bottom: 5px;
+    }
+
+    .setting-item label {
+        font-size: 0.6rem;
+    }
+
+    #debug-security {
+        margin-top: 5px;
+        padding: 8px;
+    }
+
+    #debug-pass {
+        padding: 5px;
+        font-size: 0.7rem;
+    }
 }
 
 .hidden {
@@ -1115,15 +1172,17 @@ button:hover {
     left: 0;
     width: 100vw;
     height: 100vh;
-    background: rgba(0, 0, 0, 0.4);
+    background:
+        radial-gradient(circle at 50% 85%, rgba(0, 243, 255, 0.08), transparent 45%),
+        rgba(5, 5, 16, 0.72);
     z-index: 9000;
     display: flex;
     justify-content: center;
     align-items: flex-end;
-    padding-bottom: 20%;
+    padding: 0 16px 24px;
     opacity: 0;
-    transition: opacity 0.5s ease;
-    backdrop-filter: blur(2px);
+    transition: opacity 0.25s ease;
+    backdrop-filter: blur(4px);
     pointer-events: none;
 }
 
@@ -1132,168 +1191,297 @@ button:hover {
     pointer-events: auto;
 }
 
+#tutorial-overlay.allow-game-input {
+    pointer-events: none;
+    background: transparent;
+    backdrop-filter: none;
+    padding-bottom: 190px;
+}
+
+#tutorial-overlay.allow-game-input .tutorial-box {
+    pointer-events: none;
+}
+
+@media (max-width: 768px) {
+    #tutorial-overlay.allow-game-input {
+        padding-bottom: 230px;
+    }
+}
+
+#inline-hint {
+    position: absolute;
+    top: 78px;
+    left: 50%;
+    transform: translate(-50%, -8px);
+    max-width: min(560px, 92vw);
+    padding: 10px 14px;
+    border: 1px solid var(--neon-blue);
+    border-radius: 8px;
+    background: rgba(5, 5, 16, 0.92);
+    color: #f0f6ff;
+    font-size: 0.78rem;
+    letter-spacing: 0.6px;
+    text-align: center;
+    box-shadow: 0 0 12px rgba(0, 243, 255, 0.35);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 70;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+#inline-hint.visible {
+    opacity: 1;
+    transform: translate(-50%, 0);
+}
+
+@media (max-width: 768px) {
+    #inline-hint {
+        top: 72px;
+        max-width: 94vw;
+        padding: 8px 10px;
+        font-size: 0.68rem;
+    }
+}
+
 .tutorial-box {
-    width: 90%;
+    width: min(620px, 92vw);
     max-width: 600px;
-    padding: 2px;
+    padding-top: 34px;
     color: white;
     font-family: 'Orbitron', sans-serif;
     position: relative;
+    background: var(--ui-bg);
+    border: 1px solid var(--neon-blue);
+    border-radius: 10px;
+    box-shadow:
+        0 0 15px rgba(0, 243, 255, 0.35),
+        inset 0 0 18px rgba(0, 243, 255, 0.08);
+    overflow: hidden;
 }
 
 .tutorial-box::after {
     content: '';
     position: absolute;
-    top: 0;
+    top: 34px;
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(5, 5, 20, 0.95);
-    border: 1px solid var(--neon-blue);
-    clip-path: polygon(0% 0%, 95% 0%, 100% 15%, 100% 100%, 5% 100%, 0% 85%);
-    box-shadow: inset 0 0 20px rgba(0, 243, 255, 0.1), 0 0 40px rgba(0, 0, 0, 0.8);
+    background: linear-gradient(180deg, rgba(0, 243, 255, 0.03), transparent 32%);
     z-index: -1;
+    pointer-events: none;
 }
 
 .tutorial-box::before {
     content: '';
     position: absolute;
-    top: -1px;
-    left: -1px;
-    right: -1px;
-    bottom: -1px;
-    background: linear-gradient(45deg, var(--neon-blue), transparent, var(--neon-pink));
-    z-index: -1;
-    opacity: 0.3;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--neon-blue), var(--neon-green), var(--neon-blue));
+    opacity: 0.7;
 }
 
 .tutorial-layout {
-    display: flex;
-    gap: 20px;
-    padding: 25px;
-    background: rgba(0, 0, 0, 0.4);
-    height: 100%;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 16px;
+    padding: 14px 20px 14px;
+    background: rgba(0, 0, 0, 0.35);
     align-items: center;
 }
 
 .tutorial-avatar {
-    width: 80px;
-    height: 80px;
+    width: 64px;
+    height: 64px;
     position: relative;
     flex-shrink: 0;
-    border: 1px solid rgba(0, 243, 255, 0.3);
-    background: rgba(0, 243, 255, 0.05);
+    border: 1px solid rgba(0, 243, 255, 0.45);
+    border-radius: 8px;
+    background: linear-gradient(135deg, rgba(0, 243, 255, 0.06), rgba(255, 0, 172, 0.04));
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .avatar-icon {
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(135deg, rgba(0, 243, 255, 0.2), rgba(255, 0, 172, 0.2));
+    width: 74%;
+    height: 74%;
+    background: linear-gradient(135deg, rgba(0, 243, 255, 0.45), rgba(255, 0, 172, 0.35));
     clip-path: polygon(50% 0%, 90% 20%, 90% 80%, 50% 100%, 10% 80%, 10% 20%);
-    animation: avatar-pulse 3s infinite ease-in-out;
+    animation: avatar-pulse 2.2s infinite ease-in-out;
 }
 
 .avatar-glow {
     position: absolute;
     top: 50%;
     left: 50%;
-    width: 60%;
-    height: 60%;
+    width: 70%;
+    height: 70%;
     background: var(--neon-blue);
-    filter: blur(20px);
+    filter: blur(14px);
     transform: translate(-50%, -50%);
-    opacity: 0.2;
+    opacity: 0.22;
     animation: avatar-glow-anim 2s infinite alternate;
 }
 
 @keyframes avatar-pulse {
-
     0%,
     100% {
-        transform: scale(0.9);
-        opacity: 0.5;
+        transform: scale(0.9) rotate(0deg);
+        opacity: 0.65;
     }
 
     50% {
-        transform: scale(1);
-        opacity: 0.8;
+        transform: scale(1) rotate(5deg);
+        opacity: 1;
     }
 }
 
 @keyframes avatar-glow-anim {
     from {
-        opacity: 0.1;
-        transform: translate(-50%, -50%) scale(0.8);
+        opacity: 0.12;
+        transform: translate(-50%, -50%) scale(0.92);
     }
 
     to {
-        opacity: 0.3;
+        opacity: 0.32;
         transform: translate(-50%, -50%) scale(1.2);
     }
 }
 
 .commander-tag {
     position: absolute;
-    top: -12px;
-    left: 30px;
-    background: var(--neon-blue);
-    color: black;
-    padding: 2px 14px;
-    font-size: 0.7rem;
+    top: 8px;
+    left: 20px;
+    background: rgba(0, 0, 0, 0.65);
+    color: var(--neon-blue);
+    border: 1px solid var(--neon-blue);
+    border-radius: 4px;
+    padding: 3px 10px;
+    font-size: 0.62rem;
     font-weight: bold;
-    letter-spacing: 2px;
-    text-shadow: none;
-    box-shadow: 0 0 10px var(--neon-blue);
+    letter-spacing: 1.4px;
+    box-shadow: 0 0 6px rgba(0, 243, 255, 0.45);
+    text-transform: uppercase;
+    z-index: 2;
 }
 
 .tutorial-body {
     flex-grow: 1;
+    padding-top: 0;
 }
 
 #tutorial-msg {
-    line-height: 1.6;
-    font-size: 0.95rem;
-    color: #e0e0e0;
-    text-shadow: 0 0 5px rgba(255, 255, 255, 0.2);
-    min-height: 3em;
+    line-height: 1.5;
+    font-size: 0.9rem;
+    color: #f0f6ff;
+    text-shadow: none;
+    min-height: 2.8em;
 }
 
 .tutorial-actions {
     display: flex;
     justify-content: flex-end;
-    gap: 15px;
-    padding: 10px 25px 20px 25px;
+    gap: 10px;
+    padding: 12px 20px 16px;
+    border-top: 1px solid rgba(0, 243, 255, 0.18);
+    background: rgba(0, 0, 0, 0.25);
 }
 
 .tutorial-actions button {
-    background: transparent;
-    border: 1px solid rgba(0, 243, 255, 0.5);
+    background: rgba(0, 0, 0, 0.45);
+    border: 1px solid var(--neon-blue);
     color: var(--neon-blue);
-    padding: 8px 20px;
+    padding: 8px 16px;
     cursor: pointer;
     font-family: 'Orbitron', sans-serif;
-    font-size: 0.8rem;
+    font-size: 0.74rem;
+    font-weight: 700;
     transition: all 0.2s ease;
-    letter-spacing: 1px;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    min-width: 112px;
 }
 
 .tutorial-actions button:hover {
-    background: rgba(0, 243, 255, 0.1);
-    color: white;
-    border-color: var(--neon-blue);
-    box-shadow: 0 0 15px rgba(0, 243, 255, 0.3);
+    background: rgba(0, 243, 255, 0.15);
+    color: #fff;
+    box-shadow: 0 0 10px rgba(0, 243, 255, 0.45);
 }
 
 #tutorial-skip-btn {
-    border-color: rgba(255, 255, 255, 0.2);
-    color: rgba(255, 255, 255, 0.4);
+    border-color: rgba(255, 255, 255, 0.25);
+    color: rgba(255, 255, 255, 0.65);
 }
 
 #tutorial-skip-btn:hover {
-    border-color: white;
+    border-color: rgba(255, 255, 255, 0.8);
     color: white;
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.12);
     box-shadow: none;
+}
+
+#tutorial-next-btn {
+    border-color: var(--neon-green);
+    color: var(--neon-green);
+    box-shadow: 0 0 8px rgba(0, 255, 65, 0.25);
+}
+
+#tutorial-next-btn:hover {
+    background: rgba(0, 255, 65, 0.2);
+    box-shadow: 0 0 12px rgba(0, 255, 65, 0.5);
+}
+
+@media (max-width: 768px) {
+    #tutorial-overlay {
+        padding: 0 10px 14px;
+    }
+
+    .tutorial-box {
+        width: 100%;
+        border-radius: 8px;
+        padding-top: 30px;
+    }
+
+    .commander-tag {
+        left: 14px;
+        top: 6px;
+        font-size: 0.56rem;
+        letter-spacing: 1px;
+    }
+
+    .tutorial-layout {
+        grid-template-columns: 1fr;
+        gap: 10px;
+        padding: 16px 14px 10px;
+    }
+
+    .tutorial-avatar {
+        width: 52px;
+        height: 52px;
+    }
+
+    .tutorial-body {
+        padding-top: 0;
+    }
+
+    #tutorial-msg {
+        font-size: 0.82rem;
+        min-height: 3.2em;
+    }
+
+    .tutorial-actions {
+        justify-content: space-between;
+        padding: 10px 14px 12px;
+    }
+
+    .tutorial-actions button {
+        flex: 1;
+        min-width: 0;
+        padding: 9px 10px;
+        font-size: 0.68rem;
+    }
 }
 
 .highlight-area {
