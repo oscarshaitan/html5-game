@@ -13,359 +13,376 @@
             --neon-blue: #00f3ff;
             --neon-pink: #ff00acee;
             --neon-green: #00ff41;
+            --neon-yellow: #fcee0a;
             --bg-color: #050510;
+            --panel-bg: rgba(5, 5, 16, 0.94);
+            --panel-border: rgba(0, 243, 255, 0.62);
+            --panel-shadow: 0 0 20px rgba(0, 243, 255, 0.24), inset 0 0 14px rgba(0, 243, 255, 0.08);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            min-height: 100%;
+            background:
+                radial-gradient(circle at 15% 0%, rgba(0, 243, 255, 0.08), transparent 35%),
+                radial-gradient(circle at 90% 15%, rgba(255, 0, 172, 0.08), transparent 40%),
+                var(--bg-color);
+            color: #cdd7dd;
+            font-family: 'Source Code Pro', monospace;
         }
 
         body {
-            background-color: var(--bg-color);
-            color: #ddd;
-            font-family: 'Source Code Pro', monospace;
-            margin: 0;
-            padding: 40px;
-            line-height: 1.4;
+            max-width: 1120px;
+            margin: 0 auto;
+            padding: 26px 22px 48px;
+            line-height: 1.52;
+            border-left: 1px solid rgba(0, 243, 255, 0.25);
+            border-right: 1px solid rgba(0, 243, 255, 0.25);
+            background-color: rgba(5, 5, 16, 0.72);
         }
 
         h1,
         h2,
         h3 {
             font-family: 'Orbitron', sans-serif;
-            color: var(--neon-blue);
             text-transform: uppercase;
+            letter-spacing: 1.4px;
+            margin: 0;
         }
 
         h1 {
-            font-size: 2.5rem;
-            border-bottom: 2px solid var(--neon-blue);
-            padding-bottom: 20px;
+            color: var(--neon-blue);
+            font-size: clamp(1.8rem, 4vw, 2.5rem);
+            border-bottom: 1px solid rgba(0, 243, 255, 0.5);
+            padding-bottom: 14px;
+            margin-bottom: 10px;
+            text-shadow: 0 0 12px rgba(0, 243, 255, 0.45);
         }
 
         h2 {
-            margin-top: 60px;
+            margin-top: 40px;
             color: var(--neon-pink);
-            border-left: 5px solid var(--neon-pink);
-            padding-left: 15px;
+            border-left: 4px solid rgba(255, 0, 172, 0.7);
+            padding-left: 12px;
+            margin-bottom: 12px;
+            text-shadow: 0 0 10px rgba(255, 0, 172, 0.35);
+            font-size: clamp(1rem, 2.2vw, 1.26rem);
         }
 
-        .method {
-            background: rgba(255, 255, 255, 0.05);
-            padding: 20px;
-            margin: 20px 0;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .method-name {
-            color: var(--neon-green);
-            font-size: 1.2rem;
-            font-weight: bold;
-        }
-
-        .params {
-            color: #888;
-            font-style: italic;
-        }
-
-        .desc {
-            margin-top: 10px;
-            color: #bbb;
-        }
-
-        code {
+        h3 {
             color: var(--neon-blue);
-            background: rgba(0, 243, 255, 0.1);
-            padding: 2px 4px;
-            border-radius: 3px;
+            margin-bottom: 8px;
+            font-size: 0.94rem;
+        }
+
+        p {
+            margin: 0 0 10px;
         }
 
         nav {
             position: sticky;
-            top: 20px;
-            background: var(--bg-color);
-            padding: 10px;
-            border: 1px solid var(--neon-blue);
-            margin-bottom: 40px;
+            top: 10px;
+            z-index: 5;
+            background: rgba(5, 5, 16, 0.94);
+            padding: 10px 12px;
+            border: 1px solid var(--panel-border);
+            border-radius: 10px;
+            margin: 14px 0 28px;
+            box-shadow: var(--panel-shadow);
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
         }
 
         nav a {
             color: var(--neon-blue);
             text-decoration: none;
-            margin-right: 20px;
-            font-weight: bold;
+            font-weight: 700;
+            font-size: 0.8rem;
+            padding: 4px 8px;
+            border: 1px solid rgba(0, 243, 255, 0.35);
+            border-radius: 6px;
+            background: rgba(0, 243, 255, 0.06);
         }
 
         nav a:hover {
-            color: white;
+            color: #fff;
+            box-shadow: 0 0 10px rgba(0, 243, 255, 0.4);
         }
 
-        /* Entity Icons */
-        .icon {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            margin-right: 10px;
-            vertical-align: middle;
-            position: relative;
+        .method {
+            background: var(--panel-bg);
+            padding: 14px;
+            margin: 12px 0;
+            border: 1px solid var(--panel-border);
+            border-radius: 10px;
+            box-shadow: var(--panel-shadow);
         }
 
-        .icon-square {
-            background: currentColor;
-            width: 16px;
-            height: 16px;
+        .method-name {
+            color: var(--neon-green);
+            font-size: 1rem;
+            font-weight: 700;
+            margin-bottom: 4px;
         }
 
-        .icon-circle {
-            background: currentColor;
-            border-radius: 50%;
-            width: 16px;
-            height: 16px;
+        .desc {
+            margin-top: 8px;
+            color: #c6d8de;
         }
 
-        .icon-diamond {
-            background: currentColor;
-            width: 14px;
-            height: 14px;
-            transform: rotate(45deg);
-            margin: 3px;
+        code {
+            color: var(--neon-blue);
+            background: rgba(0, 243, 255, 0.11);
+            padding: 2px 4px;
+            border-radius: 4px;
+            border: 1px solid rgba(0, 243, 255, 0.22);
+            font-size: 0.92em;
         }
 
-        .icon-hexagon {
-            background: currentColor;
-            width: 16px;
-            height: 9px;
-            position: relative;
-            margin-top: 5.5px;
+        ul {
+            margin: 8px 0 0;
+            padding-left: 18px;
         }
 
-        .icon-hexagon::before,
-        .icon-hexagon::after {
-            content: "";
-            position: absolute;
-            left: 0;
-            width: 0;
-            height: 0;
-            border-left: 8px solid transparent;
-            border-right: 8px solid transparent;
+        li {
+            margin-bottom: 6px;
         }
 
-        .icon-hexagon::before {
-            bottom: 100%;
-            border-bottom: 4.5px solid currentColor;
-        }
+        @media (max-width: 900px) {
+            body {
+                border-left: none;
+                border-right: none;
+                padding: 16px 12px 30px;
+            }
 
-        .icon-hexagon::after {
-            top: 100%;
-            border-top: 4.5px solid currentColor;
-        }
+            nav {
+                position: static;
+                margin-bottom: 18px;
+            }
 
-        .icon-kite {
-            width: 0;
-            height: 0;
-            border-left: 6px solid transparent;
-            border-right: 6px solid transparent;
-            border-bottom: 12px solid currentColor;
-            position: relative;
-            margin: auto;
-        }
+            .method {
+                padding: 11px;
+            }
 
-        .icon-kite::after {
-            content: "";
-            position: absolute;
-            top: 12px;
-            left: -6px;
-            width: 0;
-            height: 0;
-            border-left: 6px solid transparent;
-            border-right: 6px solid transparent;
-            border-top: 6px solid currentColor;
+            h2 {
+                margin-top: 26px;
+            }
         }
     </style>
 </head>
 
 <body>
     <h1>TECHNICAL REFERENCE</h1>
-    <p>Neon Defense Engine Architecture & API Reference</p>
+    <p>Neon Defense Engine Architecture and API Notes</p>
 
     <nav>
         <a href="#state">STATE</a>
-        <a href="#logic">LOGIC</a>
-        <a href="#spawning">SPAWNING</a>
+        <a href="#loop">LOOP</a>
+        <a href="#waves">WAVES</a>
+        <a href="#rifts">RIFTS</a>
+        <a href="#combat">COMBAT</a>
         <a href="#ui">UI</a>
         <a href="#audio">AUDIO</a>
-        <a href="#rendering">RENDERING</a>
+        <a href="#debug">DEBUG</a>
     </nav>
 
-    <h2 id="state">01. ENGINE STATE</h2>
+    <h2 id="state">01. ENGINE STATE & BOOT</h2>
     <div class="method">
-        <div class="method-name">resetGameLogic()</div>
-        <div class="desc">Initializes or wipes all game variables (money, lives, wave, towers) to start state.</div>
+        <div class="method-name">window.onload</div>
+        <div class="desc">Initializes canvas, binds input, creates initial path, and prepares start-screen state.
+            If save data exists, start screen offers <code>loadGame()</code>.</div>
     </div>
     <div class="method">
-        <div class="method-name">saveGame()</div>
-        <div class="desc">Serializes the current state into <code>localStorage</code> under the key
-            <code>'neonDefenseSave'</code>.
+        <div class="method-name">resetGameLogic()</div>
+        <div class="desc">Hard runtime reset for a new run. Reinitializes economy, lives, wave counters, abilities,
+            entities, and initial path graph.</div>
+    </div>
+    <div class="method">
+        <div class="method-name">saveGame() / loadGame()</div>
+        <div class="desc">Serializes run state to <code>localStorage.neonDefenseSave</code>. Restores towers, rifts,
+            economy, and progression metadata. If a saved run was mid-wave, load flow converts it to a short prep phase
+            (<code>prepTimer = 5</code>). Audio settings are stored separately via
+            <code>localStorage.neonAudioSettings</code>.
         </div>
     </div>
     <div class="method">
-        <div class="method-name">loadGame()</div>
-        <div class="desc">Parses <code>localStorage</code> and restores state, including complex objects like towers and
-            mutant definitions.</div>
+        <div class="method-name">startGame() / fullReset()</div>
+        <div class="desc">Entry and wipe flows. <code>startGame()</code> launches gameplay, <code>fullReset()</code>
+            clears persistent save/tutorial keys and reloads the app.</div>
     </div>
 
-    <h2 id="logic">02. CORE LOGIC</h2>
-    <p>
-        <span class="icon" style="color: var(--neon-blue);"><span class="icon-square"></span></span>
-        <span class="icon" style="color: var(--neon-yellow);"><span class="icon-circle"></span></span>
-        <span class="icon" style="color: var(--neon-pink);"><span class="icon-diamond"></span></span>
-    </p>
+    <h2 id="loop">02. FRAME LOOP</h2>
     <div class="method">
         <div class="method-name">gameLoop(timestamp)</div>
-        <div class="desc">The primary RAF-driven loop. Orchestrates <code>update()</code> and <code>draw()</code>.</div>
+        <div class="desc">Main RAF callback. Runs <code>update()</code> while active and always runs
+            <code>draw()</code>.
+        </div>
     </div>
     <div class="method">
         <div class="method-name">update()</div>
-        <div class="desc">Handles frame-by-frame updates for entities, physics, and timers. Runs only if game is playing
-            and not paused.</div>
+        <div class="desc">Advances wave timers, cooldowns, enemy/tower/projectile systems, particle simulation, and
+            auto-save triggers on key progression events.</div>
     </div>
     <div class="method">
-        <div class="method-name">isValidPlacement(x, y, config)</div>
-        <div class="desc">Checks grid collision against paths, UI bounds, and existing towers. Returns snap coordinates.
-            <strong>Update</strong>: Now blocks selection if targeting a cell occupied by a Rift Path.
-        </div>
+        <div class="method-name">draw()</div>
+        <div class="desc">Full canvas redraw under camera transform, including paths, towers, enemies, VFX, and UI
+            overlays.</div>
     </div>
 
-    <h2 id="spawning">03. ENEMY & PATHING</h2>
-    <p>
-        <span class="icon" style="color: #ff0000;"><span class="icon-circle"></span></span>
-        <span class="icon" style="color: #ffff00;"><span class="icon-kite"></span></span>
-        <span class="icon" style="color: #ff00ff;"><span class="icon-square"></span></span>
-        <span class="icon" style="color: #ff8800;"><span class="icon-hexagon"></span></span>
-    </p>
+    <h2 id="waves">03. WAVE ORCHESTRATION</h2>
+    <div class="method">
+        <div class="method-name">startPrepPhase()</div>
+        <div class="desc">Sets pre-wave timer (30s), clears spawn queue, updates wave UI, and handles scheduled rift
+            growth logic.</div>
+    </div>
+    <div class="method">
+        <div class="method-name">startWave()</div>
+        <div class="desc">Builds the spawn queue and applies phase effects:
+            <ul>
+                <li>Base count: <code>5 + floor(wave * 2.5)</code></li>
+                <li>Guaranteed boss every 10th wave</li>
+                <li>After wave 50: optional surprise boss on non-10th multiples of 5 (25%)</li>
+                <li>Every 20th wave: random rift mutation assignment</li>
+                <li>After wave 50: each rift has 10% tier-up chance at wave start</li>
+            </ul>
+        </div>
+    </div>
+    <div class="method">
+        <div class="method-name">spawnEnemy() / spawnSubUnits(parent)</div>
+        <div class="desc">Dequeues enemy type, selects a random rift, applies wave scale, rift tier multipliers, and
+            mutation modifiers. Splitter death path routes to <code>spawnSubUnits()</code>.</div>
+    </div>
+
+    <h2 id="rifts">04. RIFT GENERATION & PATHING</h2>
     <div class="method">
         <div class="method-name">calculatePath()</div>
-        <div class="desc">Generates the initial maze path using a randomized BFS algorithm from edge to center.</div>
-    </div>
-    <div class="method">
-        <div class="method-name">spawnEnemy()</div>
-        <div class="desc">Pops the next enemy from <code>spawnQueue</code>, scales HP by wave, and assigns a random
-            active path.</div>
-    </div>
-    <div class="method">
-        <div class="method-name">generateMutation()</div>
-        <div class="desc"><i>(Internal)</i> Logic hook for creating mutated enemy variants every 20 waves.</div>
+        <div class="desc">Generates the initial spawn path from a randomized start cell at least 10 grid units from
+            center via <code>findPathOnGrid()</code>. Fallback path is applied if generation fails.
+        </div>
     </div>
     <div class="method">
         <div class="method-name">generateNewPath()</div>
-        <div class="desc">Generates an independent path from an orbital shell to the core or a neighbor.
+        <div class="desc">Creates additional rifts using zone-based candidate search and merge behavior:
             <ul>
-                <li><strong>Spatial Zoning</strong>: Rifts fill concentric shells ($6 \pm 3n$ units) sequentially.</li>
-                <li><strong>Shell Capacity</strong>: Limits paths per zone using the $2n^2$ model (Orbit 1: 2, Orbit 2:
-                    8, etc.).</li>
-                <li><strong>Connectivity</strong>: Direct linkage to core follows $P = 1/2^{n-1}$ probability curve.
-                    Failing this, it seeks the absolute closest neighbor segment for a merge.</li>
+                <li>Zone ring bounds: inner <code>6 + (zone-1)*3</code>, outer <code>6 + zone*3</code></li>
+                <li>Zone capacity: <code>zone 1 => 1</code>, otherwise <code>zone + 1</code></li>
+                <li>Direct core-link probability: <code>0.5 / (zone^2)</code></li>
+                <li>Global spacing guard: minimum 2.5 grid units</li>
+                <li>Merge fallback chooses nearest valid segment with minimum expansion distance of 12 cells</li>
             </ul>
+            New path segments can destroy towers occupying newly opened lanes and refund 70% of invested value.
         </div>
     </div>
     <div class="method">
         <div class="method-name">findPathOnGrid(start, end, obstacles)</div>
-        <div class="desc">A* pathfinder with dynamic weighting.
+        <div class="desc">A*-style grid pathfinder with:
             <ul>
-                <li><strong>Crossing Penalties</strong>: Existing rifts are treated as high-resistance terrain (cost:
-                    100).</li>
-                <li><strong>Turn Penalties</strong>: Penalty of 5 for direction shifts to favor straight segments.</li>
+                <li>Obstacle crossing penalty: <code>+100</code></li>
+                <li>Direction change penalty: <code>+5</code></li>
             </ul>
+            Uses Manhattan heuristic and reconstructs center-aligned world points.
         </div>
     </div>
 
-    </div>
-
-    <h2 id="abilities">04. COMMANDER ABILITIES</h2>
+    <h2 id="combat">05. COMBAT & ABILITIES</h2>
     <div class="method">
-        <div class="method-name">activateAbility(type)</div>
-        <div class="desc">Toggles the targeting state for a specific ability (<code>emp</code>, <code>overclock</code>).
-            Blocks tower building while active. Refuses activation if Energy is insufficient or ability is on cooldown.
-        </div>
+        <div class="method-name">isValidPlacement(x, y, towerConfig)</div>
+        <div class="desc">Validates world-space tower placement against UI exclusion zones, player funds, path
+            collisions, and occupied cells.</div>
     </div>
     <div class="method">
-        <div class="method-name">useAbility(type, target)</div>
-        <div class="desc">Executes the ability effect. Deducts <code>Energy</code>, sets the <code>maxCooldown</code>,
-            and applies logic:
+        <div class="method-name">buildTower() / upgradeTower() / sellTower()</div>
+        <div class="desc">Tower economy and lifecycle entry points. Upgrade scaling and sell-refund logic are applied
+            at runtime.</div>
+    </div>
+    <div class="method">
+        <div class="method-name">updateTowers() / shoot() / hitEnemy()</div>
+        <div class="desc">Targeting, projectile emission, and damage resolution. Kill handling updates money, total kill
+            counters, energy gain, and conditional splitter spawn.</div>
+    </div>
+    <div class="method">
+        <div class="method-name">activateAbility(type) / useAbility(type, target)</div>
+        <div class="desc">Ability state machine for:
             <ul>
-                <li><code>emp</code>: Flags enemies in radius with <code>frozen: true</code> and sets
-                    <code>frozenTimer</code>.
-                </li>
-                <li><code>overclock</code>: Flags a tower with <code>overclocked: true</code> and sets
-                    <code>overclockTimer</code>.
-                </li>
+                <li><code>emp</code>: AOE freeze + frozen damage vulnerability</li>
+                <li><code>overclock</code>: temporary fire-rate buff on a selected tower</li>
             </ul>
+            Applies energy costs and cooldown tracking in seconds.
         </div>
     </div>
 
-    <h2 id="ui">05. USER INTERFACE</h2>
+    <h2 id="ui">06. USER INTERFACE</h2>
     <div class="method">
-        <div class="method-name">loadGame()</div>
-        <div class="desc">Parses <code>localStorage</code> and restores state, including persistent Core Tower levels
-            and localized Rift (Path) data.</div>
+        <div class="method-name">setupInput() / screenToWorld()</div>
+        <div class="desc">Mouse/touch abstraction for panning, zooming, tap-select, and click-build workflows.</div>
     </div>
     <div class="method">
         <div class="method-name">updateUI()</div>
-        <div class="desc">Syncs HTML elements (money, lives, timers) with the internal engine state.</div>
+        <div class="desc">Synchronizes HUD counters, wave timers, enemy composition badges, energy bar, and cooldown
+            states.</div>
     </div>
     <div class="method">
         <div class="method-name">updateSelectionUI()</div>
-        <div class="desc">Dynamically renders and positions the floating upgrade/sell panel near the selected entity.
+        <div class="desc">Renders context panels for selected tower, core, or rift intel (tier and mutation modifiers).
         </div>
-    </div>
-    <div class="method">
-        <div class="method-name">getRepairCost()</div>
-        <div class="desc">Returns the current price for life restoration based on lives exceeding parity.</div>
     </div>
     <div class="method">
         <div class="method-name">updateWavePanel()</div>
-        <div class="desc">Calculates incoming wave statistics (enemy count, sector evolution odds, active mutations) and
-            populates the Wave Intelligence modal with live-syncing data.</div>
+        <div class="desc">Builds wave-intel content from current rift graph and incoming wave metadata. Core fields
+            (count/anomaly/threat) always update; extended special-list output requires a matching panel target id in
+            the DOM.</div>
+    </div>
+    <div class="method">
+        <div class="method-name">getRepairCost()</div>
+        <div class="desc">Dynamic repair-price helper used by core panel controls.</div>
     </div>
 
-    <h2 id="audio">05. AUDIO ENGINE</h2>
+    <h2 id="audio">07. AUDIO ENGINE</h2>
     <div class="method">
-        <div class="method-name">AudioEngine.updateMusic()</div>
-        <div class="desc">A multi-track sequencer that plays 16-step patterns. Shifts between 'Normal' and 'Threat'
-            themes based on enemy presence.</div>
-    </div>
-    <div class="method">
-        <div class="method-name">AudioEngine.playArp(freq, type, vol, duration)</div>
-        <div class="desc">Generates a rapid arpeggiated sequence (8-bit style) used for high-threat melodies.</div>
-    </div>
-    <div class="method">
-        <div class="method-name">AudioEngine.setVolume(type, val)</div>
-        <div class="desc">Adjusts gain nodes for 'music' or 'sfx' and persists settings to <code>localStorage</code>.
+        <div class="method-name">AudioEngine.init()</div>
+        <div class="desc">Creates Web Audio graph (master/music/sfx gains) and resumes suspended contexts on demand.
         </div>
     </div>
     <div class="method">
-        <div class="method-name">AudioEngine.toggleMute()</div>
-        <div class="desc">Toggles the master gain node between 0 and 1 with a smooth 100ms ramp. Synchronizes UI mute
-            buttons.</div>
+        <div class="method-name">AudioEngine.updateMusic()</div>
+        <div class="desc">16-step sequencer with 15 normal melody variants and one threat profile. Automatically switches
+            based on active boss/mutant presence and wave index.</div>
     </div>
     <div class="method">
-        <div class="method-name">AudioEngine.init()</div>
-        <div class="desc">Initializes the Web Audio API context. Resumes context if suspended (browser security
-            requirement).</div>
+        <div class="method-name">AudioEngine.setVolume() / toggleMute()</div>
+        <div class="desc">Applies gain changes and persists music/SFX/mute settings to local storage.</div>
+    </div>
+    <div class="method">
+        <div class="method-name">AudioEngine.playSFX(type)</div>
+        <div class="desc">Procedural synth SFX helper used by tower fire, explosions, hits, and system feedback events.
+        </div>
     </div>
 
-    <h2 id="rendering">06. RENDERING PIPELINE</h2>
+    <h2 id="debug">08. DEBUG & OPERATOR HOOKS</h2>
     <div class="method">
-        <div class="method-name">draw()</div>
-        <div class="desc">Total canvas redraw. Applies camera transforms (pan/zoom) before drawing entities.</div>
+        <div class="method-name">unlockDebug()</div>
+        <div class="desc">SHA-256 password gate for command center visibility.</div>
     </div>
     <div class="method">
-        <div class="method-name">drawTowerOne(type, x, y, color)</div>
-        <div class="desc">Graphic primitive for drawing specific tower shapes (Square, Circle, Diamond).</div>
+        <div class="method-name">addDebugMoney() / debugSpawn(type)</div>
+        <div class="desc">Economy and enemy-injection tooling for stress testing.</div>
     </div>
     <div class="method">
-        <div class="method-name">drawLevelPips(tower)</div>
-        <div class="desc">Draws visual markers at the base of towers to represent upgrade level.</div>
+        <div class="method-name">debugCreateRift() / debugLevelUpRift()</div>
+        <div class="desc">Rift topology mutation tools for path and scaling validation.</div>
+    </div>
+    <div class="method">
+        <div class="method-name">toggleNoBuildOverlay()</div>
+        <div class="desc">Visual debug overlay for placement restrictions and map zoning.</div>
     </div>
 
-    <p style="text-align: center; margin-top: 100px; color: #555;">&copy; NEON DEFENSE ENGINE - FOR AUTHORIZED
-        DEVELOPERS ONLY</p>
+    <p style="text-align: center; margin-top: 80px; color: #6a7c85;">NEON DEFENSE ENGINE INTERNAL REFERENCE</p>
 </body>
 
 </html>

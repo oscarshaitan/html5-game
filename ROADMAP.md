@@ -1,271 +1,148 @@
-# 🗺️ Neon Defense - Development Roadmap
+# Neon Defense Roadmap
 
-This document outlines planned features and improvements for future development.
+This roadmap tracks practical priorities for gameplay quality, balance stability, and long-term replayability.
 
-## 📱 Phase 1: Mobile Support
+## Guiding Priorities
 
-### Priority: High
-**Goal**: Make the game fully playable on mobile devices with touch controls
-
-#### Features
-- [ ] **Touch Controls**
-  - Tap to select towers
-  - Tap to place towers
-  - Pinch to zoom
-  - Two-finger drag to pan camera
-  - Long-press for tower info/upgrade menu
-
-- [ ] **Responsive UI**
-  - Redesign HUD for smaller screens
-  - Larger touch targets for buttons
-  - Collapsible panels to save screen space
-  - Portrait and landscape mode support
-
-- [ ] **Performance Optimization**
-  - Reduce particle effects on mobile
-  - Optimize canvas rendering for mobile GPUs
-  - Implement quality settings (Low/Medium/High)
-  - Battery-saving mode
-
-- [ ] **Mobile-Specific Features**
-  - Haptic feedback for tower placement and enemy kills
-  - Simplified ability activation (larger buttons)
-  - Auto-pause when app goes to background
-
-#### Technical Considerations
-- Detect mobile devices and adjust UI accordingly
-- Test on various screen sizes (phones, tablets)
-- Ensure localStorage works across mobile browsers
-- Handle orientation changes gracefully
+1. Keep the game readable under pressure.
+2. Preserve tactical freedom as waves and paths scale.
+3. Expand strategic depth without increasing UI friction.
+4. Prioritize systems that improve replay value over one-off content.
 
 ---
 
-## 👤 Phase 2: Player Name Persistence Fix
+## Milestone A: Stability and UX Foundation
 
-### Priority: High
-**Goal**: Improve player name handling to never re-ask once saved
+### A1. Input and Interaction Quality
+- [x] Tap-vs-drag separation to prevent accidental selection while panning
+- [x] Selection dismissal parity (tap same cell, `Esc`, ability selection)
+- [ ] Add optional interaction sensitivity sliders (tap/drag thresholds)
 
-#### Current Issue
-- Game re-prompts for player name at the end of each session
-- Name should persist permanently once entered
+### A2. Onboarding and Hinting
+- [x] First-run tutorial flow
+- [x] Inline hints for camera/rift/ability/tower intel
+- [ ] Add optional "Hints: On/Off" toggle in pause menu
+- [ ] Add "Replay onboarding" from settings without full reset
 
-#### Solution
-- [ ] **Fix Name Persistence Logic**
-  - Only show name modal if `localStorage.getItem('playerName')` is null/undefined
-  - Remove any code that clears playerName on game over
-  - Add "Change Name" option in settings menu instead
-
-- [ ] **Settings Menu Enhancement**
-  - Add "Player Profile" section
-  - Allow manual name change
-  - Show lifetime statistics (total kills, highest wave, etc.)
-  - Add "Reset Profile" option with confirmation
-
-- [ ] **Testing**
-  - Verify name persists across browser sessions
-  - Test with browser cache clearing
-  - Ensure name appears correctly in share function
+### A3. Save/Profile Reliability
+- [x] One-time name capture with local persistence
+- [x] Tutorial and hint state persistence
+- [ ] Profile panel: highest wave, average run length, total kills by class
 
 ---
 
-## 🎮 Phase 3: Additional Game Mechanics
+## Milestone B: Balance and Difficulty Curve
 
-### Priority: Medium
-**Goal**: Expand gameplay depth with new mechanics and content
+### B1. Early Game (Waves 1-15)
+- [ ] Reduce dead-time in early prep by adaptive countdown scaling
+- [ ] Improve tutorial-to-live transition pacing
+- [ ] Add one low-risk economic decision in first 10 waves
 
-#### New Tower Types
-- [ ] **Laser Tower**
-  - Continuous beam damage
-  - Pierces through multiple enemies
-  - Expensive but powerful
+### B2. Mid Game (Waves 16-50)
+- [ ] Introduce composition checks that force mixed tower investment
+- [ ] Increase telegraphing for priority enemies and mutations
+- [ ] Add clearer threat tags in Wave Intelligence panel
 
-- [ ] **Freeze Tower**
-  - Slows enemies in radius
-  - No direct damage
-  - Synergizes with other towers
-
-- [ ] **Artillery Tower**
-  - Long range, area damage
-  - Slow fire rate
-  - Splash damage
-
-#### New Enemy Types
-- [ ] **Healer Enemy**
-  - Restores HP to nearby enemies
-  - Priority target
-  - Low HP but fast
-
-- [ ] **Shield Enemy**
-  - Temporary invulnerability
-  - Requires sustained damage
-  - Protects nearby enemies
-
-- [ ] **Teleporter Enemy**
-  - Randomly jumps forward on path
-  - Unpredictable movement
-  - Medium HP
-
-#### Advanced Mechanics
-- [ ] **Weather System**
-  - Random weather events affect gameplay
-  - Rain: Slows all enemies
-  - Storm: Reduces tower range
-  - Clear: Bonus credits
-
-- [ ] **Tower Synergies**
-  - Towers gain bonuses when placed near specific types
-  - Visual indicators for synergy zones
-  - Encourages strategic placement
-
-- [ ] **Commander Abilities**
-  - Unlock passive bonuses
-  - Choose specialization (Offense/Defense/Economy)
-  - Skill tree progression
-
-- [ ] **Challenge Modes**
-  - Endless mode (current)
-  - Time attack (survive X waves in Y minutes)
-  - Limited resources (fixed starting credits)
-  - Boss rush (only boss enemies)
-
-#### Quality of Life
-- [ ] **Tower Templates**
-  - Save tower configurations
-  - Quick deploy saved layouts
-  - Share templates with friends
-
-- [ ] **Replay System**
-  - Record and replay games
-  - Share epic moments
-  - Learn from mistakes
+### B3. Late Game (50+)
+- [ ] Solve core-adjacent tile starvation when path count rises
+- [ ] Add anti-snowball safeguards for path density and overlap pressure
+- [ ] Add optional "Late Game Assist Ruleset" preset for accessibility
 
 ---
 
-## ⚔️ Phase 4: Multiplayer - 1v1 PvP Mode
+## Milestone C: Pathing and Core-Area Design
 
-### Priority: Low (Complex Implementation)
-**Goal**: Create an asymmetric PvP mode where one player defends and another attacks
+Focus: keep late game solvable while preserving tension.
 
-#### Game Mode: "Rift Commander vs Defense Commander"
+### Candidate Solutions to Prototype
+- [ ] Core Exclusion Ring: reserve minimum buildable ring around core
+- [ ] Soft Path Repulsion near core: raise path cost in protected cells
+- [ ] Dynamic reroute budget: only allow N high-proximity paths near center
+- [ ] Core Hardpoint Nodes: fixed build anchors that never become blocked
+- [ ] Emergency Core Modules unlocked at wave thresholds
 
-##### Core Concept
-- **Defense Commander** (Player 1): Places towers to defend base
-- **Rift Commander** (Player 2): Plans enemy waves and spawn patterns
-- Turn-based or simultaneous gameplay
-- Best of 3 rounds, players swap roles
-
-##### Defense Commander Mechanics
-- Limited budget per round
-- Place towers before wave starts
-- Can use abilities during wave
-- Goal: Survive all waves with maximum lives remaining
-
-##### Rift Commander Mechanics
-- Limited "threat budget" to spend on enemies
-- Choose enemy types and spawn timing
-- Select spawn points (Rifts)
-- Apply mutations to enemies
-- Goal: Destroy all lives before waves end
-
-##### Implementation Approach
-
-**Option 1: Real-time Multiplayer (Complex)**
-- Requires backend server (Node.js + WebSocket)
-- Real-time synchronization
-- Matchmaking system
-- Hosting: Heroku, Railway, or Vercel
-
-**Option 2: Asynchronous Multiplayer (Simpler)**
-- No real-time connection needed
-- Player 1 creates a challenge (tower setup)
-- Challenge saved to database (Firebase/Supabase)
-- Player 2 loads challenge and plans attack
-- Results compared automatically
-- Share challenges via link
-
-**Option 3: Local Multiplayer (Simplest)**
-- Hot-seat mode (same device)
-- Player 1 sets up defense (screen hidden)
-- Player 2 plans attack (screen hidden)
-- Game runs automatically
-- Great for testing mechanics before online
-
-##### Technical Requirements
-- [ ] **Backend Infrastructure**
-  - Database for storing challenges/matches
-  - User authentication (optional)
-  - API for challenge CRUD operations
-  - Leaderboard system
-
-- [ ] **Game Logic Changes**
-  - Separate "setup phase" from "execution phase"
-  - AI to execute Rift Commander's plan
-  - Scoring system (lives remaining, credits spent, etc.)
-  - Replay generation
-
-- [ ] **UI/UX**
-  - Lobby system
-  - Challenge browser
-  - Match history
-  - Player profiles and stats
-
-##### Recommended Tech Stack
-```
-Frontend: Current HTML5/JS/CSS
-Backend: Firebase (easiest) or Node.js + Express
-Database: Firestore or PostgreSQL
-Auth: Firebase Auth or Auth0
-Hosting: GitHub Pages (frontend) + Firebase Functions (backend)
-```
-
-##### Development Phases
-1. **Prototype**: Local hot-seat mode
-2. **Alpha**: Asynchronous multiplayer with Firebase
-3. **Beta**: Add matchmaking and leaderboards
-4. **Release**: Real-time multiplayer (if demand exists)
+### Validation Criteria
+- [ ] At least 3 viable build tiles remain near core at late-game target wave
+- [ ] No single mutation/profile makes all core-adjacent decisions invalid
+- [ ] Late wave loss reason is tactical, not geometric lockout
 
 ---
 
-## 🎯 Priority Order
+## Milestone D: Tower and Buildcraft Expansion
 
-1. **Phase 2** - Player Name Fix (Quick win, improves UX)
-2. **Phase 1** - Mobile Support (Expands audience significantly)
-3. **Phase 3** - New Mechanics (Keeps existing players engaged)
-4. **Phase 4** - Multiplayer (Long-term goal, high complexity)
+### D1. New Tower Concepts
+- [ ] Arc Tower: chain lightning with diminishing jumps
+- [ ] Cryo Field Tower: persistent slow zone and freeze buildup
+- [ ] Siege Mortar: delayed AOE with armor break utility
+- [ ] Prism Tower: beam splits based on nearby modifiers
 
----
+### D2. Modifier System
+- [ ] Prefix/suffix tower mods (example: Focused, Volatile, Stable)
+- [ ] Socket-style mod chips earned from milestone waves
+- [ ] Tradeoff balancing (power gain vs cost/cooldown/coverage)
 
-## 📊 Success Metrics
-
-- **Mobile Support**: 50%+ of players on mobile devices
-- **Name Persistence**: Zero complaints about re-entering name
-- **New Mechanics**: Average session time increases by 30%
-- **Multiplayer**: 1000+ challenges created in first month
-
----
-
-## 🔄 Iteration Strategy
-
-1. Implement one phase at a time
-2. Gather player feedback after each phase
-3. Iterate based on data and feedback
-4. Don't move to next phase until current is stable
+### D3. Synergy Rules
+- [ ] Cross-tower combo tags (example: Shock + Wet, Mark + Crit)
+- [ ] Diminishing returns guardrails to prevent single-combo domination
 
 ---
 
-## 💡 Additional Ideas (Backlog)
+## Milestone E: Tech Tree Strategy Layer
 
-- **Achievements System**: Unlock badges for milestones
-- **Daily Challenges**: Special wave configurations with rewards
-- **Cosmetic Skins**: Different visual themes for towers/enemies
-- **Sound Effects**: Add impact sounds for hits, explosions
-- **Particle Effects**: More visual polish for abilities
-- **Tutorial Mode**: Interactive guide for new players
-- **Difficulty Levels**: Easy/Normal/Hard/Nightmare
-- **Custom Maps**: Different base layouts and path configurations
+Goal: custom strategy progression that changes decision-making each run.
+
+### E1. Tech Tree Foundations
+- [ ] Add Research Currency (earned via wave milestones/objectives)
+- [ ] Add Branches: Offense, Control, Economy, Core Systems
+- [ ] Add prereq graph and unlock dependencies
+
+### E2. Build Identity
+- [ ] Pre-run loadout page for selected branch route
+- [ ] In-run tactical unlock choices at milestone waves
+- [ ] Respec tokens with limits to avoid build trivialization
+
+### E3. Balance Guardrails
+- [ ] Node power budget caps by tier
+- [ ] Mutual-exclusion nodes for strong archetype divergence
+- [ ] Telemetry for dominant node paths and abandonment rates
 
 ---
 
-**Last Updated**: 2026-02-06
+## Milestone F: Content and Replayability
 
-**Status**: Planning Phase - Ready for Implementation
+- [ ] New enemy archetypes tied to specific counterplay skills
+- [ ] Variant Rift events with explicit risk-reward decisions
+- [ ] Challenge presets (Time Pressure, Sparse Build, Elite Storm)
+- [ ] Seasonal objective modifiers
+
+---
+
+## Milestone G: Production and Tooling
+
+- [ ] Add deterministic simulation mode for balance testing
+- [ ] Add debug replay snapshots for difficult-wave diagnosis
+- [ ] Add metric logger for wave clear rates by segment
+- [ ] Add lightweight balancing checklist before each release
+
+---
+
+## Release Order (Recommended)
+
+1. Milestone B + C (difficulty and late-path solvability)
+2. Milestone D (tower mechanics and modifiers)
+3. Milestone E (tech tree strategy layer)
+4. Milestone F (content replay loops)
+5. Milestone G (tooling hardening in parallel)
+
+---
+
+## Success Metrics
+
+- Late-game fairness: average "unavoidable geometry loss" reports trend to near zero
+- Build diversity: no single tower composition exceeds 45% high-wave usage
+- Engagement: increased run completion into mid game and late game
+- Tech tree adoption: players maintain multiple distinct strategy paths
+
+---
+
+Last updated: 2026-02-11

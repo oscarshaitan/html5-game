@@ -13,77 +13,180 @@
             --neon-green: #00ff41;
             --neon-yellow: #fcee0a;
             --bg-color: #050510;
+            --doc-bg: rgba(5, 5, 16, 0.94);
+            --doc-border: rgba(0, 243, 255, 0.65);
+            --doc-shadow: 0 0 24px rgba(0, 243, 255, 0.25), inset 0 0 18px rgba(0, 243, 255, 0.08);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            min-height: 100%;
+            background:
+                radial-gradient(circle at 20% 0%, rgba(0, 243, 255, 0.08), transparent 35%),
+                radial-gradient(circle at 85% 20%, rgba(255, 0, 172, 0.08), transparent 38%),
+                var(--bg-color);
+            color: #e8f7ff;
+            font-family: 'Orbitron', sans-serif;
         }
 
         body {
-            background-color: var(--bg-color);
-            color: white;
-            font-family: 'Orbitron', sans-serif;
-            margin: 0;
-            padding: 40px;
-            line-height: 1.6;
-            max-width: 800px;
-            margin: auto;
-            border-left: 2px solid var(--neon-blue);
-            border-right: 2px solid var(--neon-blue);
-            box-shadow: 0 0 20px rgba(0, 243, 255, 0.2);
+            line-height: 1.65;
+            max-width: 980px;
+            margin: 0 auto;
+            padding: 30px 24px 48px;
+            border-left: 1px solid rgba(0, 243, 255, 0.35);
+            border-right: 1px solid rgba(0, 243, 255, 0.35);
+            background-color: rgba(5, 5, 16, 0.72);
+            box-shadow: 0 0 26px rgba(0, 243, 255, 0.14);
         }
 
         h1,
         h2,
         h3 {
-            color: var(--neon-pink);
             text-transform: uppercase;
-            letter-spacing: 2px;
-            text-shadow: 0 0 10px var(--neon-pink);
+            letter-spacing: 1.6px;
+            margin: 0;
         }
 
         h1 {
-            font-size: 3rem;
+            color: var(--neon-pink);
+            font-size: clamp(2rem, 5vw, 3rem);
             text-align: center;
-            margin-bottom: 50px;
+            margin-bottom: 14px;
+            text-shadow: 0 0 14px rgba(255, 0, 172, 0.65);
         }
 
         h2 {
-            border-bottom: 1px solid var(--neon-blue);
-            padding-bottom: 10px;
-            margin-top: 40px;
+            margin-top: 36px;
+            margin-bottom: 14px;
             color: var(--neon-blue);
-            text-shadow: 0 0 10px var(--neon-blue);
+            text-shadow: 0 0 10px rgba(0, 243, 255, 0.48);
+            border-bottom: 1px solid rgba(0, 243, 255, 0.34);
+            padding-bottom: 10px;
+            font-size: clamp(1rem, 2.2vw, 1.26rem);
+        }
+
+        h3 {
+            color: var(--neon-pink);
+            margin-bottom: 8px;
+            font-size: 0.95rem;
+        }
+
+        p {
+            margin: 0 0 14px;
+        }
+
+        strong {
+            color: #fff;
         }
 
         .highlight {
             color: var(--neon-yellow);
+            text-shadow: 0 0 8px rgba(252, 238, 10, 0.32);
         }
 
         .green {
             color: var(--neon-green);
-            text-shadow: 0 0 5px var(--neon-green);
+            text-shadow: 0 0 6px rgba(0, 255, 65, 0.56);
         }
 
         .key {
             display: inline-block;
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid var(--neon-blue);
+            background: rgba(0, 0, 0, 0.45);
+            border: 1px solid rgba(0, 243, 255, 0.62);
             padding: 2px 8px;
             border-radius: 4px;
             color: var(--neon-blue);
-            font-weight: bold;
-            margin: 0 5px;
+            font-weight: 700;
+            margin: 0 3px;
+            font-size: 0.8rem;
+            letter-spacing: 0.5px;
         }
 
         .tower-info {
             display: grid;
-            grid-template-columns: 80px 1fr;
-            gap: 20px;
-            margin: 20px 0;
-            padding: 20px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            grid-template-columns: 72px 1fr;
+            gap: 14px;
+            margin: 12px 0;
+            padding: 14px;
+            background: var(--doc-bg);
+            border: 1px solid var(--doc-border);
+            border-radius: 10px;
+            box-shadow: var(--doc-shadow);
             align-items: center;
         }
 
-        /* Entity Icons */
+        .enemy-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+            margin-top: 12px;
+        }
+
+        .back-link {
+            display: block;
+            margin-top: 40px;
+            color: var(--neon-green);
+            text-decoration: none;
+            text-align: center;
+            font-weight: 700;
+            letter-spacing: 1px;
+        }
+
+        .back-link:hover {
+            text-shadow: 0 0 12px rgba(0, 255, 65, 0.72);
+        }
+
+        ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        li {
+            margin-bottom: 11px;
+            position: relative;
+            padding-left: 20px;
+            color: #d9eef7;
+        }
+
+        li::before {
+            content: '>';
+            position: absolute;
+            left: 0;
+            color: var(--neon-blue);
+        }
+
+        table {
+            width: 100%;
+            margin: 10px 0;
+            border-collapse: collapse;
+            font-size: 0.78rem;
+            border: 1px solid rgba(0, 243, 255, 0.22);
+            background: rgba(0, 0, 0, 0.26);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        th,
+        td {
+            padding: 6px 7px;
+            border: 1px solid rgba(0, 243, 255, 0.2);
+            text-align: left;
+        }
+
+        th {
+            color: var(--neon-blue);
+            background: rgba(0, 243, 255, 0.1);
+            font-size: 0.72rem;
+            letter-spacing: 0.8px;
+        }
+
         .icon {
             width: 30px;
             height: 30px;
@@ -196,108 +299,73 @@
             border-top: 10px solid currentColor;
         }
 
-        .enemy-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 15px;
-            margin-top: 20px;
-        }
+        @media (max-width: 860px) {
+            body {
+                border-left: none;
+                border-right: none;
+                padding: 18px 14px 28px;
+            }
 
-        .back-link {
-            display: block;
-            margin-top: 50px;
-            color: var(--neon-green);
-            text-decoration: none;
-            text-align: center;
-            font-weight: bold;
-        }
+            .enemy-grid {
+                grid-template-columns: 1fr;
+            }
 
-        .back-link:hover {
-            text-shadow: 0 0 10px var(--neon-green);
-        }
+            .tower-info {
+                grid-template-columns: 1fr;
+                text-align: left;
+            }
 
-        ul {
-            list-style: none;
-            padding: 0;
-        }
+            .icon {
+                margin: 0;
+            }
 
-        li {
-            margin-bottom: 15px;
-            position: relative;
-            padding-left: 25px;
-        }
-
-        li::before {
-            content: '>';
-            position: absolute;
-            left: 0;
-            color: var(--neon-blue);
+            h2 {
+                margin-top: 26px;
+            }
         }
     </style>
 </head>
 
 <body>
     <h1>NEON DEFENSE</h1>
-    <p style="text-align: center; font-style: italic;">OPERATIONS MANUAL V2.0</p>
+    <p style="text-align: center; font-style: italic;">OPERATIONS MANUAL V2.1</p>
 
     <h2>01. MISSION OBJECTIVE</h2>
-    <p>Protect the <span class="green">CORE</span> at all costs. Enemies will spawn from rifts across the grid and
-        attempt to reach the sector center. If 20 enemies breach your defenses, the system fails.</p>
+    <p>Protect the <span class="green">CORE</span>. Enemies enter through active rifts and move toward the center of
+        the sector. You begin with <strong>20 lives</strong>; when lives reach zero, the run ends.</p>
+    <ul>
+        <li>Starting economy: <span class="highlight">100 credits</span>.</li>
+        <li>Every kill grants credits and <span class="highlight">+1 energy</span>.</li>
+        <li>Prep windows between waves are your build and planning phase.</li>
+    </ul>
 
     <h2>02. CONTROLS</h2>
     <ul>
-        <li><span class="key">Q</span> / <span class="key">W</span> / <span class="key">E</span> - Select Tower Type
-            (Basic, Rapid, Sniper)</li>
-        <li><span class="key">Left Click</span> - Place Tower / Select Entity</li>
-        <li><span class="key">U</span> - Upgrade selected tower</li>
-        <li><span class="key">Del</span> / <span class="key">Backspace</span> - Sell selected tower</li>
-        <li><span class="key">Esc</span> - Deselect or Pause</li>
-        <li><span class="key">Select Spawn Orb</span> - View <strong>Rift Intel</strong> and highlight path</li>
-        <li><span class="key">Mouse Drag</span> - Pan Camera</li>
-        <li><span class="key">Mouse Wheel</span> - Zoom in/out</li>
+        <li><span class="key">Q</span> / <span class="key">W</span> / <span class="key">E</span> Select tower type
+            (Basic / Rapid / Sniper)</li>
+        <li><span class="key">Left Click</span> Select tower/base/rift, or select an empty tile to open the build panel
+            at that location</li>
+        <li><span class="key">U</span> Upgrade selected tower</li>
+        <li><span class="key">Delete</span> / <span class="key">Backspace</span> Sell selected tower</li>
+        <li><span class="key">1</span> EMP targeting mode</li>
+        <li><span class="key">2</span> Overclock targeting mode</li>
+        <li><span class="key">Esc</span> Deselect current target or open pause menu</li>
+        <li><span class="key">Mouse Drag</span> Pan camera</li>
+        <li><span class="key">Mouse Wheel</span> Zoom camera</li>
+        <li><span class="key">Start Wave Button</span> Skip prep timer and launch immediately</li>
+        <li><span class="key">Recenter Button</span> Snap camera back to Core</li>
+        <li><span class="key">Touch Drag</span> Pan camera (mobile)</li>
+        <li><span class="key">Pinch</span> Zoom camera (mobile)</li>
     </ul>
 
-    <h2>03. ORBITAL PHYSICS</h2>
-    <p>The grid is organized into concentric <strong>Orbital Shells</strong> relative to the Core. The distribution
-        of rifts follows complex spatial laws:</p>
-    <ul>
-        <li><span class="highlight">Shell Capacity ($2n^2$)</span>: The number of rifts allowed in each ring is limited
-            by its distance. Orbit 1 (inner) supports 2 rifts, Orbit 2 supports 8, Orbit 3 supports 18, etc. Inner
-            shells must be full
-            before the network expands outward.</li>
-        <li><span class="highlight">Link Stability ($1/2^{n-1}$)</span>: Core connection reliability degrades with
-            distance. Zone 1 rifts always link directly to the core. Zone 2 rifts have a 50% chance to link, preferring
-            merges into existing shells otherwise.</li>
-        <li><span class="highlight">Path Interconnection</span>: As the network grows, outer rifts intelligently merge
-            into high-capacity arteries near the core, creating a efficient mesh network.</li>
-    </ul>
-
-    <h2>04. THE CORE (BASE)</h2>
-    <div
-        style="display: flex; align-items: center; gap: 20px; background: rgba(0, 255, 65, 0.05); padding: 15px; border: 1px solid rgba(0, 255, 65, 0.2);">
-        <div class="icon shadow-glow" style="color: var(--neon-green); margin: 0;">
-            <div class="icon-diamond"></div>
-        </div>
-        <div>
-            <p style="margin: 0;">Your base is more than just a target. It is a functional defense platform.</p>
-        </div>
-    </div>
-    <ul>
-        <li><span class="highlight">Level 1-10</span>: The Core can be upgraded to generate defense drones and a
-            protective shield.</li>
-        <li><span class="highlight">Repair</span>: You can restore lost lives by repairing the base. Note: The price
-            increases for every life purchased beyond the initial 20.</li>
-        <li><span class="highlight">Defense Drones</span>: Higher levels add more drones and layered shields.</li>
-    </ul>
-
-    <h2>04. ARSENAL</h2>
+    <h2>03. ARSENAL</h2>
     <div class="tower-info">
         <div class="icon shadow-glow" style="color: var(--neon-blue);">
             <div class="icon-square"></div>
         </div>
         <div>
             <strong>Basic Tower</strong><br>
-            Reliable all-rounder. Low cost ($50). Consistent damage and range.
+            Cost: $50. Balanced profile (Range 100 / Damage 10).
         </div>
     </div>
     <div class="tower-info">
@@ -306,7 +374,7 @@
         </div>
         <div>
             <strong>Rapid Tower</strong><br>
-            High fire rate ($120), but lower range and damage per shot. Ideal for swarms.
+            Cost: $120. High fire rate with lower per-shot damage.
         </div>
     </div>
     <div class="tower-info">
@@ -315,12 +383,37 @@
         </div>
         <div>
             <strong>Sniper Tower</strong><br>
-            Extreme range and high damage ($200). Very slow firing rate. Perfect for Bosses.
+            Cost: $200. Extreme range and heavy hits with slow cadence.
         </div>
     </div>
+    <ul>
+        <li><span class="highlight">Upgrade Cost</span>: <code>floor(baseCost * 0.5 * currentLevel)</code>.</li>
+        <li><span class="highlight">Sell Refund</span>: 70% of total invested tower credits.</li>
+    </ul>
 
-    <h2>05. EVOLUTION & DIFFICULTY</h2>
-    <p>As waves progress, the difficulty escalates. Keep an eye on incoming threats:</p>
+    <h2>04. CORE PLATFORM</h2>
+    <div
+        style="display: flex; align-items: center; gap: 20px; background: rgba(0, 255, 65, 0.05); padding: 15px; border: 1px solid rgba(0, 255, 65, 0.2);">
+        <div class="icon shadow-glow" style="color: var(--neon-green); margin: 0;">
+            <div class="icon-diamond"></div>
+        </div>
+        <div>
+            <p style="margin: 0;">Select the core to repair lives and upgrade the home turret platform.</p>
+        </div>
+    </div>
+    <ul>
+        <li><span class="highlight">Repair Cost</span>: <code>getRepairCost()</code> starts at $50 and scales upward
+            beyond baseline; each purchase currently restores <strong>+2 lives</strong>.</li>
+        <li><span class="highlight">Core Upgrade</span>: available up to Level 10; each purchase currently increments
+            core level by <strong>+2</strong> in this build.</li>
+        <li><span class="highlight">Base Turret Scaling</span>: Damage
+            <code>20 + 10*(level-1)</code>, Range <code>150 + 30*(level-1)</code>, Cooldown
+            <code>max(8, 35 - 5*level)</code>.
+        </li>
+    </ul>
+
+    <h2>05. ENEMY ROSTER</h2>
+    <p>Wave composition escalates as progression advances.</p>
 
     <div class="enemy-grid">
         <div
@@ -328,35 +421,35 @@
             <div class="icon shadow-glow" style="color: #ff0000;">
                 <div class="icon-circle" style="width: 20px; height: 20px;"></div>
             </div>
-            <div style="font-size: 0.8rem;"><strong>BASIC</strong><br>Standard threat.</div>
+            <div style="font-size: 0.8rem;"><strong>BASIC</strong><br>Standard unit.</div>
         </div>
         <div
             style="background: rgba(255, 255, 0, 0.1); padding: 10px; border: 1px solid #ffff0044; display: flex; gap: 15px; align-items: center;">
             <div class="icon shadow-glow" style="color: #ffff00;">
                 <div class="icon-kite" style="transform: scale(0.7);"></div>
             </div>
-            <div style="font-size: 0.8rem;"><strong>FAST</strong><br>High velocity unit.</div>
+            <div style="font-size: 0.8rem;"><strong>FAST</strong><br>High speed pressure.</div>
         </div>
         <div
             style="background: rgba(255, 0, 255, 0.1); padding: 10px; border: 1px solid #ff00ff44; display: flex; gap: 15px; align-items: center;">
             <div class="icon shadow-glow" style="color: #ff00ff;">
                 <div class="icon-square" style="width: 22px; height: 22px;"></div>
             </div>
-            <div style="font-size: 0.8rem;"><strong>TANK</strong><br>High HP armor.</div>
+            <div style="font-size: 0.8rem;"><strong>TANK</strong><br>High HP absorber.</div>
         </div>
         <div
             style="background: rgba(255, 136, 0, 0.1); padding: 10px; border: 1px solid #ff880044; display: flex; gap: 15px; align-items: center;">
             <div class="icon shadow-glow" style="color: #ff8800;">
                 <div class="icon-hexagon" style="transform: scale(0.8);"></div>
             </div>
-            <div style="font-size: 0.8rem;"><strong>BOSS</strong><br>Heavy assault unit.</div>
+            <div style="font-size: 0.8rem;"><strong>BOSS</strong><br>Major breach unit.</div>
         </div>
         <div
             style="background: rgba(255, 255, 255, 0.1); padding: 10px; border: 1px solid #ffffff44; display: flex; gap: 15px; align-items: center;">
             <div class="icon shadow-glow" style="color: #ffffff;">
                 <div class="icon-square" style="transform: rotate(45deg) scale(0.7);"></div>
             </div>
-            <div style="font-size: 0.8rem;"><strong>MUTANT</strong><br>Glowing ultra-variant.</div>
+            <div style="font-size: 0.8rem;"><strong>MUTANT</strong><br>Mutation-powered variant.</div>
         </div>
         <div
             style="background: rgba(0, 255, 65, 0.1); padding: 10px; border: 1px solid #00ff4144; display: flex; gap: 15px; align-items: center;">
@@ -365,7 +458,7 @@
                     style="width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-bottom: 18px solid currentColor;">
                 </div>
             </div>
-            <div style="font-size: 0.8rem;"><strong>SPLITTER</strong><br>Fractures on death.</div>
+            <div style="font-size: 0.8rem;"><strong>SPLITTER</strong><br>Spawns mini units on death.</div>
         </div>
         <div
             style="background: rgba(252, 238, 10, 0.1); padding: 10px; border: 1px solid #fcee0a44; display: flex; gap: 15px; align-items: center;">
@@ -374,136 +467,110 @@
                     style="width: 20px; height: 20px; clip-path: polygon(30% 0%, 70% 0%, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0% 70%, 0% 30%); background: currentColor;">
                 </div>
             </div>
-            <div style="font-size: 0.8rem;"><strong>BULWARK</strong><br>Taunts nearby towers.</div>
+            <div style="font-size: 0.8rem;"><strong>BULWARK</strong><br>Heavy elite line-breaker.</div>
         </div>
         <div
             style="background: rgba(255, 0, 172, 0.1); padding: 10px; border: 1px solid #ff00ac44; display: flex; gap: 15px; align-items: center;">
             <div class="icon shadow-glow" style="color: #ff00ac; opacity: 0.4;">
                 <div class="icon-circle" style="width: 18px; height: 18px;"></div>
             </div>
-            <div style="font-size: 0.8rem;"><strong>SHIFTER</strong><br>Periodically cloaks.</div>
+            <div style="font-size: 0.8rem;"><strong>SHIFTER</strong><br>Cloak-cycle behavior.</div>
         </div>
         <div
             style="background: rgba(0, 255, 65, 0.1); padding: 10px; border: 1px solid #00ff4144; display: flex; gap: 15px; align-items: center;">
             <div class="icon shadow-glow" style="color: #00ff41;">
                 <div style="width: 8px; height: 8px; border-radius: 50%; background: currentColor; margin: auto;"></div>
             </div>
-            <div style="font-size: 0.8rem;"><strong>MINI</strong><br>Fragile swarm unit.</div>
+            <div style="font-size: 0.8rem;"><strong>MINI</strong><br>Small fast sub-unit.</div>
         </div>
     </div>
 
+    <h2>06. WAVE & RIFT SYSTEM</h2>
     <ul>
-        <li><span class="highlight">Rifts</span>: New paths for enemies will open every 10 waves (every 5 waves after
-            wave 50). Tap a <strong>Rift Spawn point</strong> (the glowing orb) to view its intel and illuminate its
-            entire path with neon energy.</li>
-        <li><span class="highlight">Veteran Rifts</span>: After Wave 50, Rifts have a 10% chance to Evolve into a higher
-            <strong>Tier</strong>. Higher Tiers boost enemy stats and reward payouts:
-            <table
-                style="width: 100%; margin: 10px 0; border-collapse: collapse; font-size: 0.8rem; border: 1px solid rgba(0, 243, 255, 0.2);">
-                <tr style="background: rgba(0, 243, 255, 0.1);">
-                    <th style="padding: 5px; border: 1px solid rgba(0, 243, 255, 0.2);">TIER</th>
-                    <th style="padding: 5px; border: 1px solid rgba(0, 243, 255, 0.2);">HP BOOST</th>
-                    <th style="padding: 5px; border: 1px solid rgba(0, 243, 255, 0.2);">CREDITS</th>
-                </tr>
-                <tr>
-                    <td style="padding: 5px; border: 1px solid rgba(0, 243, 255, 0.2);">T1 (Standard)</td>
-                    <td style="padding: 5px; border: 1px solid rgba(0, 243, 255, 0.2);">1.0x</td>
-                    <td style="padding: 5px; border: 1px solid rgba(0, 243, 255, 0.2);">1.0x</td>
-                </tr>
-                <tr>
-                    <td style="padding: 5px; border: 1px solid rgba(0, 243, 255, 0.2);">T2+ (Veteran)</td>
-                    <td style="padding: 5px; border: 1px solid rgba(0, 243, 255, 0.2);">+50% per Tier</td>
-                    <td style="padding: 5px; border: 1px solid rgba(0, 243, 255, 0.2);">+25% per Tier</td>
-                </tr>
-            </table>
-        </li>
-        <li><span class="highlight">Sector Mutations</span>: Every 20 waves, a random Rift may be infected by an
-            anomaly. Mutations
-            only last for the current wave:
-            <table
-                style="width: 100%; margin: 10px 0; border-collapse: collapse; font-size: 0.8rem; border: 1px solid rgba(255, 0, 172, 0.2);">
-                <tr style="background: rgba(255, 0, 172, 0.1);">
-                    <th style="padding: 5px; border: 1px solid rgba(255, 0, 172, 0.2);">TYPE</th>
-                    <th style="padding: 5px; border: 1px solid rgba(255, 0, 172, 0.2);">EFFECT</th>
-                    <th style="padding: 5px; border: 1px solid rgba(255, 0, 172, 0.2);">YIELD</th>
-                </tr>
-                <tr>
-                    <td style="padding: 5px; border: 1px solid rgba(255, 0, 172, 0.2); color: #ff0033;">CRIMSON</td>
-                    <td style="padding: 5px; border: 1px solid rgba(255, 0, 172, 0.2);">Vicious (HP x1.6, SPD x1.2)</td>
-                    <td style="padding: 5px; border: 1px solid rgba(255, 0, 172, 0.2);">2.0x</td>
-                </tr>
-                <tr>
-                    <td style="padding: 5px; border: 1px solid rgba(255, 0, 172, 0.2); color: #aa00ff;">VOID</td>
-                    <td style="padding: 5px; border: 1px solid rgba(255, 0, 172, 0.2);">Unstable (HP x1.4, SPD x1.5)
-                    </td>
-                    <td style="padding: 5px; border: 1px solid rgba(255, 0, 172, 0.2);">2.5x</td>
-                </tr>
-                <tr>
-                    <td style="padding: 5px; border: 1px solid rgba(255, 0, 172, 0.2); color: #00ffaa;">TITAN</td>
-                    <td style="padding: 5px; border: 1px solid rgba(255, 0, 172, 0.2);">Monolithic (HP x3.0, SPD x0.7)
-                    </td>
-                    <td style="padding: 5px; border: 1px solid rgba(255, 0, 172, 0.2);">3.0x</td>
-                </tr>
-                <tr>
-                    <td style="padding: 5px; border: 1px solid rgba(255, 0, 172, 0.2); color: #ffffff;">PHASE</td>
-                    <td style="padding: 5px; border: 1px solid rgba(255, 0, 172, 0.2);">Ethereal (HP x1.2, SPD x2.0)
-                    </td>
-                    <td style="padding: 5px; border: 1px solid rgba(255, 0, 172, 0.2);">1.5x</td>
-                </tr>
-                <tr>
-                    <td style="padding: 5px; border: 1px solid rgba(255, 0, 172, 0.2); color: #fcee0a;">NEON</td>
-                    <td style="padding: 5px; border: 1px solid rgba(255, 0, 172, 0.2);">Energized (HP x1.8, SPD x1.3)
-                    </td>
-                    <td style="padding: 5px; border: 1px solid rgba(255, 0, 172, 0.2);">2.0x</td>
-                </tr>
-            </table>
-        </li>
-        <li><span class="highlight">Temporal Mutations</span>: Every 20 waves, a random Rift will undergo a
-            <strong>Temporal Mutation</strong>. During that wave, 100% of enemies from that Rift will be ultra-powerful
-            variants (CRIMSON, VOID, etc.). Mutations are fleeting and clear after the anomaly wave.
-        </li>
-        <li><span class="highlight">Bosses</span>: Every 10 waves, a Heavy Boss unit will emerge. After Wave 50, beware
-            of <span class="highlight">Surprise Bosses</span> (25% chance every 5 waves).</li>
-        <li><span class="highlight">Wave Intelligence</span>: Tap the Wave display (ⓘ icon) to view detailed intel on
-            the incoming wave, including <span class="highlight">Evolution Odds</span> and active Mutation alerts.</li>
+        <li><span class="highlight">Wave Size</span>: <strong>5 + floor(wave * 2.5)</strong>.</li>
+        <li><span class="highlight">Rift Expansion</span>: extra rifts are generated on waves 11/21/31/41/51, then every
+            5 waves after 50 (56/61/66...).</li>
+        <li><span class="highlight">Veteran Rift Tiers</span>: from wave 51 onward, each rift has a 10% per-wave chance
+            to gain a tier.</li>
+    </ul>
+    <table>
+        <tr>
+            <th>TIER EFFECT</th>
+            <th>PER TIER ABOVE T1</th>
+        </tr>
+        <tr>
+            <td>HP</td>
+            <td>+50%</td>
+        </tr>
+        <tr>
+            <td>SPEED</td>
+            <td>+15%</td>
+        </tr>
+        <tr>
+            <td>CREDITS</td>
+            <td>+50%</td>
+        </tr>
+    </table>
+    <ul>
+        <li><span class="highlight">Mutations</span>: every 20th wave, one random rift gets a one-wave mutation.</li>
+        <li><span class="highlight">Mutation Scope</span>: all enemies from the mutated rift inherit that profile for the
+            full wave.</li>
+    </ul>
+    <table>
+        <tr>
+            <th>TYPE</th>
+            <th>HP</th>
+            <th>SPEED</th>
+            <th>REWARD</th>
+        </tr>
+        <tr>
+            <td style="color: #ff0033;">CRIMSON</td>
+            <td>x1.6</td>
+            <td>x1.2</td>
+            <td>x2.0</td>
+        </tr>
+        <tr>
+            <td style="color: #aa00ff;">VOID</td>
+            <td>x1.4</td>
+            <td>x1.5</td>
+            <td>x2.5</td>
+        </tr>
+        <tr>
+            <td style="color: #00ffaa;">TITAN</td>
+            <td>x3.0</td>
+            <td>x0.7</td>
+            <td>x3.0</td>
+        </tr>
+        <tr>
+            <td style="color: #ffffff;">PHASE</td>
+            <td>x1.2</td>
+            <td>x2.0</td>
+            <td>x1.5</td>
+        </tr>
+        <tr>
+            <td style="color: #fcee0a;">NEON</td>
+            <td>x1.8</td>
+            <td>x1.3</td>
+            <td>x2.0</td>
+        </tr>
+    </table>
+    <ul>
+        <li><span class="highlight">Boss Cadence</span>: guaranteed every 10th wave. After wave 50, certain 5-wave
+            intervals can spawn an additional surprise boss (25% chance).</li>
+        <li><span class="highlight">Wave Intelligence</span>: click the WAVE label to open enemy capacity, anomaly
+            status, and threat-level intel.</li>
     </ul>
 
-    <h2>06. AUDIO SECTOR</h2>
-    <p>Adjust your sensory experience in the Pause Menu:</p>
-    <ul>
-        <li><span class="highlight">Cyclic Melodies</span>: The sector now features <span class="highlight">15 unique
-                melodies</span> that rotate every wave, providing a diverse auditory backdrop to your defense
-            operations.</li>
-        <li><span class="highlight">Music Volume</span>: Adjust the intensity of the 8-bit dynamic soundtrack.</li>
-        <li><span class="highlight">SFX Volume</span>: Control the volume of explosions, shots, and UI feedback.</li>
-        <li><span class="highlight">Master Mute</span>: Silence all audio for stealth operations.</li>
-        <li><span class="highlight">Persistence</span>: Your audio levels are automatically saved and restored between
-            sessions.</li>
-    </ul>
-
-    <h2>07. COMMAND CENTER (DEVELOPER ACCESS)</h2>
-    <p>For testing and sector evaluation, authorized commanders can access the <span class="highlight">COMMAND
-            CENTER</span> within the Pause Menu:</p>
-    <ul>
-        <li><span class="highlight">+1M CREDITS</span>: Instantly inject 1,000,000 credits into the local economy.</li>
-        <li><span class="highlight">TACTICAL SPAWN</span>: Force-spawn any enemy type (Basic, Fast, Tank, Splitter,
-            Bulwark, Shifter, or Boss) at a random Rift for defensive stress-testing.</li>
-        <li><span class="highlight">TOGGLE OVERLAY</span>: Visualizes the orbital boundaries and path-spacing buffers.
-            In this mode, tapping a ring highlights the entire shell in yellow.</li>
-    </ul>
-
-    <h2>08. TACTICAL SUPPORT</h2>
-    <p>As Commander, you have access to powerful active abilities powered by <span class="highlight">SECTOR
-            ENERGY</span>. Energy is gained for every enemy unit destroyed on the grid.</p>
+    <h2>07. COMMANDER ABILITIES</h2>
+    <p>Abilities consume <span class="highlight">energy</span> (max 100). Energy is earned from kills.</p>
 
     <div class="tower-info">
         <div class="icon shadow-glow" style="color: var(--neon-blue);">
             <div class="emp-icon"></div>
         </div>
         <div>
-            <strong>EMP BLAST <span class="key">1</span></strong> (Cost: 40)<br>
-            Deploys a localized EMP. Freezes enemies for 5 seconds. Stunned units take <span class="green">20% more
-                damage</span>.
+            <strong>EMP BLAST <span class="key">1</span></strong> (Cost: 40, Cooldown: 15s)<br>
+            Freeze enemies in radius for 5 seconds. Frozen targets take <span class="green">20% more damage</span>.
         </div>
     </div>
 
@@ -512,13 +579,25 @@
             <div class="overclock-icon"></div>
         </div>
         <div>
-            <strong>OVERCLOCK <span class="key">2</span></strong> (Cost: 25)<br>
-            Target a tower to grant 100% fire rate boost for 10 seconds.
+            <strong>OVERCLOCK <span class="key">2</span></strong> (Cost: 25, Cooldown: 10s)<br>
+            Target one tower for +100% fire rate during a 10-second boost window.
         </div>
     </div>
 
+    <h2>08. AUDIO & SAVES</h2>
     <ul>
-        <li><span class="highlight">ENERGY</span>: You earn 1 Unit per kill. Max capacity is 100 Units.</li>
+        <li><span class="highlight">Adaptive Audio</span>: 15 rotating normal melodies with dynamic threat mode.</li>
+        <li><span class="highlight">Pause Audio Controls</span>: music, SFX, and master mute are persisted in local storage.</li>
+        <li><span class="highlight">Save System</span>: supports auto-save and manual <strong>FORCE SAVE</strong>.</li>
+    </ul>
+
+    <h2>09. COMMAND CENTER (DEVELOPER ACCESS)</h2>
+    <ul>
+        <li><span class="highlight">+1M CREDITS</span>: inject 1,000,000 credits instantly.</li>
+        <li><span class="highlight">NEW RIFT</span>: force one additional rift.</li>
+        <li><span class="highlight">LEVEL UP RIFT</span>: tier-up a random existing rift.</li>
+        <li><span class="highlight">TACTICAL SPAWN</span>: spawn specific enemy classes on demand.</li>
+        <li><span class="highlight">TOGGLE OVERLAY</span>: visualize placement and pathing constraints.</li>
     </ul>
 
     <a href="index.html" class="back-link">RETURN TO COMBAT</a>
