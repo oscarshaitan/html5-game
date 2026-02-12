@@ -1,6 +1,7 @@
 // --- Rendering ---
 
 function draw() {
+    const perfDraw = perfBegin('draw');
     // Update Screen Shake
     if (shakeAmount > 0) {
         shakeAmount *= 0.9; // Decay
@@ -25,6 +26,11 @@ function draw() {
     const endX = Math.floor((width - camera.x - sx) / camera.zoom / GRID_SIZE + 1) * GRID_SIZE;
     const startY = Math.floor((-camera.y - sy) / camera.zoom / GRID_SIZE) * GRID_SIZE;
     const endY = Math.floor((height - camera.y - sy) / camera.zoom / GRID_SIZE + 1) * GRID_SIZE;
+    const viewCullMargin = GRID_SIZE * 3;
+    const viewMinX = startX - viewCullMargin;
+    const viewMaxX = endX + viewCullMargin;
+    const viewMinY = startY - viewCullMargin;
+    const viewMaxY = endY + viewCullMargin;
 
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)'; // Slightly fainter for infinite grid
     ctx.lineWidth = 1;
@@ -42,6 +48,7 @@ function draw() {
     }
     ctx.stroke();
 
+    const perfDrawWorld = perfBegin('drawWorld');
 
     // --- Spatial Zoning Overlay (Debug) ---
     if (showNoBuildOverlay && paths.length > 0 && paths[0].points.length > 0) {
@@ -91,6 +98,8 @@ function draw() {
     }
     for (let pathData of paths) {
         const path = pathData.points;
+        const pathBounds = getPathBoundsCached(pathData);
+        if (!isBoundsVisible(pathBounds, viewMinX, viewMaxX, viewMinY, viewMaxY)) continue;
         const riftLevel = pathData.level || 1;
         const mutation = pathData.mutation;
 
@@ -153,7 +162,7 @@ function draw() {
         }
 
         // Mutation Tag
-        if (mutation) {
+        if (mutation && (isIndividualSelected || isZoneSelected)) {
             ctx.fillStyle = mutation.color;
             ctx.font = 'bold 10px Orbitron';
             ctx.textAlign = 'center';
@@ -288,6 +297,7 @@ function draw() {
 
     // Draw Towers
     for (let t of towers) {
+        if (!isWorldPointVisible(t.x, t.y, 120)) continue;
         drawTowerOne(t.type, t.x, t.y, t.color, t.hardpointScale || 1);
         // Draw Level Pips
         if (t.level > 1) {
@@ -311,6 +321,7 @@ function draw() {
 
     // Draw Enemies
     for (let e of enemies) {
+        if (!isWorldPointVisible(e.x, e.y, 140)) continue;
         ctx.save();
 
         let alpha = 1.0;
@@ -395,6 +406,7 @@ function draw() {
 
     // Draw Projectiles
     for (let p of projectiles) {
+        if (!isWorldPointVisible(p.x, p.y, 90)) continue;
         ctx.fillStyle = p.color;
         ctx.shadowBlur = 5;
         ctx.shadowColor = p.color;
@@ -406,11 +418,13 @@ function draw() {
 
     // Draw Particles
     for (let p of particles) {
+        if (!isWorldPointVisible(p.x, p.y, 80)) continue;
         ctx.globalAlpha = p.life;
         ctx.fillStyle = p.color;
         ctx.fillRect(p.x, p.y, 3, 3);
         ctx.globalAlpha = 1.0;
     }
+    perfEnd('drawWorld', perfDrawWorld);
 
     // Draw Placement Preview
 
@@ -442,6 +456,7 @@ function draw() {
     }
 
     // --- Entity Status Visuals ---
+    const perfDrawStatus = perfBegin('drawStatus');
     // Frozen pulse on enemies
     const renderStaticStatus = activeStaticStatusCount > 0;
     const useHalfRateStatus = PERFORMANCE_RULES.enabled
@@ -494,7 +509,7 @@ function draw() {
             ctx.stroke();
             ctx.setLineDash([]);
 
-            const showStaticLabel = !PERFORMANCE_RULES.enabled || nearCursor;
+            const showStaticLabel = nearCursor;
             if (showStaticLabel && ((frameCount & 1) === 0 || isStaticStunned)) {
                 ctx.fillStyle = '#b8e9ff';
                 ctx.font = 'bold 10px Orbitron';
@@ -530,6 +545,7 @@ function draw() {
     // Overclock pulse on towers
     towers.forEach(t => {
         if (t.overclocked) {
+            if (!isWorldPointVisible(t.x, t.y, 120)) return;
             ctx.strokeStyle = '#fcee0a';
             ctx.lineWidth = 2;
             const pulse = 1 + Math.sin(frameCount * 0.5) * 0.2;
@@ -545,11 +561,14 @@ function draw() {
             ctx.globalAlpha = 1.0;
         }
     });
+    perfEnd('drawStatus', perfDrawStatus);
 
     // --- Dynamic Lighting Rendering ---
+    const perfDrawLighting = perfBegin('drawLighting');
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
     for (const light of lightSources) {
+        if (!isWorldPointVisible(light.x, light.y, light.radius + 40)) continue;
         const gradient = ctx.createRadialGradient(light.x, light.y, 0, light.x, light.y, light.radius);
         gradient.addColorStop(0, light.color);
         gradient.addColorStop(1, 'rgba(0,0,0,0)');
@@ -561,6 +580,7 @@ function draw() {
         ctx.fill();
     }
     ctx.restore();
+    perfEnd('drawLighting', perfDrawLighting);
 
     ctx.restore(); // Restore from camera transform
 
@@ -623,6 +643,8 @@ function draw() {
     ctx.restore(); // End UI overlay transform
 
     ctx.shadowBlur = 0;
+    perfEnd('draw', perfDraw);
+    perfMaybeReport();
 }
 
 window.resetCamera = function () {
@@ -654,6 +676,7 @@ function drawHardpoints() {
     }
 
     for (const hp of hardpoints) {
+        if (!isWorldPointVisible(hp.x, hp.y, 90)) continue;
         const key = `${hp.c},${hp.r}`;
         const isOccupied = occupiedSlots.has(key);
         const isSelected = activeBuildKey === key;
@@ -736,6 +759,32 @@ function isWorldPointVisible(x, y, margin = 120) {
     const sx = x * camera.zoom + camera.x;
     const sy = y * camera.zoom + camera.y;
     return sx >= -margin && sx <= width + margin && sy >= -margin && sy <= height + margin;
+}
+
+function isBoundsVisible(bounds, minX, maxX, minY, maxY) {
+    return !(bounds.maxX < minX || bounds.minX > maxX || bounds.maxY < minY || bounds.minY > maxY);
+}
+
+function getPathBoundsCached(pathData) {
+    if (pathData._bounds && pathData._boundsVersion === pathData.points.length) {
+        return pathData._bounds;
+    }
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    for (const pt of pathData.points) {
+        if (pt.x < minX) minX = pt.x;
+        if (pt.y < minY) minY = pt.y;
+        if (pt.x > maxX) maxX = pt.x;
+        if (pt.y > maxY) maxY = pt.y;
+    }
+
+    pathData._bounds = { minX, minY, maxX, maxY };
+    pathData._boundsVersion = pathData.points.length;
+    return pathData._bounds;
 }
 
 function drawArcTowerLinks() {

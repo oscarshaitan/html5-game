@@ -1,5 +1,80 @@
 // --- Main Loop ---
 let updateParticleBudgetUsed = false;
+const UI_SYNC_INTERVAL_FRAMES = 6;
+let nextUISyncFrame = 0;
+let lastBuildAffordMoney = null;
+
+const PERF_MONITOR = {
+    enabled: localStorage.getItem('neonDefensePerfMonitor') === 'on',
+    reportEveryFrames: 120,
+    budgets: {
+        update: 8.0,
+        updateEnemies: 2.5,
+        updateTowers: 2.5,
+        updateProjectiles: 1.6,
+        updateParticles: 1.2,
+        updateArcEffects: 0.8,
+        updateUI: 1.4,
+        draw: 8.0,
+        drawWorld: 5.8,
+        drawStatus: 1.6,
+        drawLighting: 1.2
+    },
+    samples: Object.create(null)
+};
+
+window.togglePerfMonitor = function () {
+    PERF_MONITOR.enabled = !PERF_MONITOR.enabled;
+    localStorage.setItem('neonDefensePerfMonitor', PERF_MONITOR.enabled ? 'on' : 'off');
+    if (!PERF_MONITOR.enabled) PERF_MONITOR.samples = Object.create(null);
+    console.log(`Perf monitor: ${PERF_MONITOR.enabled ? 'ON' : 'OFF'}`);
+};
+
+function perfNow() {
+    return (typeof performance !== 'undefined' && performance.now)
+        ? performance.now()
+        : Date.now();
+}
+
+function perfBegin() {
+    if (!PERF_MONITOR.enabled) return 0;
+    return perfNow();
+}
+
+function perfEnd(label, startTime) {
+    if (!PERF_MONITOR.enabled || startTime === 0) return;
+    const dt = perfNow() - startTime;
+    const entry = PERF_MONITOR.samples[label] || (PERF_MONITOR.samples[label] = {
+        sum: 0,
+        count: 0,
+        max: 0,
+        over: 0
+    });
+
+    entry.sum += dt;
+    entry.count++;
+    if (dt > entry.max) entry.max = dt;
+
+    const budget = PERF_MONITOR.budgets[label] || Infinity;
+    if (dt > budget) entry.over++;
+}
+
+function perfMaybeReport() {
+    if (!PERF_MONITOR.enabled) return;
+    if (frameCount === 0 || (frameCount % PERF_MONITOR.reportEveryFrames) !== 0) return;
+
+    const labels = Object.keys(PERF_MONITOR.samples);
+    if (labels.length === 0) return;
+
+    const summary = labels.map((label) => {
+        const s = PERF_MONITOR.samples[label];
+        const avg = s.count > 0 ? (s.sum / s.count) : 0;
+        return `${label}: avg ${avg.toFixed(2)}ms / max ${s.max.toFixed(2)}ms / over ${s.over}`;
+    }).join(' | ');
+
+    console.log(`[PERF] ${summary}`);
+    PERF_MONITOR.samples = Object.create(null);
+}
 
 function emitUpdateParticleOnce(x, y, color, count = 1) {
     if (updateParticleBudgetUsed) return;
@@ -21,6 +96,7 @@ function gameLoop(timestamp) {
 }
 
 function update() {
+    const perfUpdate = perfBegin('update');
     frameCount++;
     updateParticleBudgetUsed = false;
 
@@ -66,11 +142,25 @@ function update() {
     }
 
     // Entities (Always update so projectiles finish etc, but mainly active during wave)
+    const perfUpdateEnemies = perfBegin('updateEnemies');
     updateEnemies();
+    perfEnd('updateEnemies', perfUpdateEnemies);
+
+    const perfUpdateTowers = perfBegin('updateTowers');
     updateTowers();
+    perfEnd('updateTowers', perfUpdateTowers);
+
+    const perfUpdateProjectiles = perfBegin('updateProjectiles');
     updateProjectiles();
+    perfEnd('updateProjectiles', perfUpdateProjectiles);
+
+    const perfUpdateParticles = perfBegin('updateParticles');
     updateParticles();
+    perfEnd('updateParticles', perfUpdateParticles);
+
+    const perfUpdateArc = perfBegin('updateArcEffects');
     updateArcEffects();
+    perfEnd('updateArcEffects', perfUpdateArc);
 
     if (lives <= 0) {
         gameState = 'gameover';
@@ -86,6 +176,7 @@ function update() {
 
     // Update music state based on bosses/mutants
     AudioEngine.updateMusic();
+    perfEnd('update', perfUpdate);
 }
 
 function spawnEnemy() {
@@ -836,35 +927,64 @@ function updateParticles() {
     }
 }
 
-function updateUI() {
-    document.getElementById('money-display').innerText = money;
-    document.getElementById('lives-display').innerText = lives;
-    document.getElementById('wave-display').innerText = wave;
+function setTextIfChanged(el, value) {
+    if (!el) return;
+    const next = String(value);
+    if (el.dataset.uiText === next) return;
+    el.dataset.uiText = next;
+    el.innerText = next;
+}
+
+function updateUI(force = false) {
+    const perfUpdateUI = perfBegin('updateUI');
+    const shouldThrottle = !force && gameState === 'playing';
+    if (shouldThrottle && frameCount < nextUISyncFrame) {
+        perfEnd('updateUI', perfUpdateUI);
+        return;
+    }
+
+    if (shouldThrottle) {
+        nextUISyncFrame = frameCount + UI_SYNC_INTERVAL_FRAMES;
+    }
+
+    setTextIfChanged(document.getElementById('money-display'), money);
+    setTextIfChanged(document.getElementById('lives-display'), lives);
+    setTextIfChanged(document.getElementById('wave-display'), wave);
 
     const remainingEnemies = spawnQueue.length + enemies.length;
     const enemyInfoEl = document.getElementById('enemy-info');
     if (isWaveActive) {
         if (remainingEnemies > currentWaveTotalEnemies) currentWaveTotalEnemies = remainingEnemies;
-        enemyInfoEl.innerText = `REMAINING: ${remainingEnemies}`;
+        setTextIfChanged(enemyInfoEl, `REMAINING: ${remainingEnemies}`);
     } else {
-        enemyInfoEl.innerText = `REMAINING: 0`;
+        setTextIfChanged(enemyInfoEl, 'REMAINING: 0');
     }
 
     const timerEl = document.getElementById('timer-display');
     if (isWaveActive) {
-        timerEl.innerText = 'WAVE ACTIVE';
-        timerEl.style.color = '#ff4444';
+        setTextIfChanged(timerEl, 'WAVE ACTIVE');
+        if (timerEl && timerEl.dataset.uiColor !== '#ff4444') {
+            timerEl.dataset.uiColor = '#ff4444';
+            timerEl.style.color = '#ff4444';
+        }
     } else {
-        timerEl.innerText = `NEXT WAVE: ${prepTimer}s`;
-        timerEl.style.color = '#00ff41';
+        setTextIfChanged(timerEl, `NEXT WAVE: ${prepTimer}s`);
+        if (timerEl && timerEl.dataset.uiColor !== '#00ff41') {
+            timerEl.dataset.uiColor = '#00ff41';
+            timerEl.style.color = '#00ff41';
+        }
     }
 
     // --- Ability UI Synchronization ---
     const energyFill = document.getElementById('energy-bar-fill');
     const energyVal = document.getElementById('energy-value');
     if (energyFill) {
-        energyFill.style.height = `${(energy / maxEnergy) * 100}%`;
-        energyVal.innerText = `${Math.floor(energy)} / ${maxEnergy}`;
+        const nextHeight = `${(energy / maxEnergy) * 100}%`;
+        if (energyFill.dataset.uiHeight !== nextHeight) {
+            energyFill.dataset.uiHeight = nextHeight;
+            energyFill.style.height = nextHeight;
+        }
+        setTextIfChanged(energyVal, `${Math.floor(energy)} / ${maxEnergy}`);
     }
 
     // Ability Slots
@@ -875,15 +995,19 @@ function updateUI() {
             const canAfford = energy >= ability.cost;
             const reloaded = ability.cooldown <= 0;
             const isActive = targetingAbility === key;
+            const cooldownText = ability.cooldown > 0 ? String(ability.cooldown) : '';
+            const stateKey = `${canAfford ? 1 : 0}${reloaded ? 1 : 0}${isActive ? 1 : 0}:${cooldownText}`;
 
-            btn.classList.toggle('disabled', !canAfford || !reloaded);
-            btn.classList.toggle('active', isActive);
+            if (btn.dataset.uiState !== stateKey) {
+                btn.dataset.uiState = stateKey;
+                btn.classList.toggle('disabled', !canAfford || !reloaded);
+                btn.classList.toggle('active', isActive);
 
-            // Optional: Cooldown overlay text?
-            if (ability.cooldown > 0) {
-                btn.setAttribute('data-cooldown', ability.cooldown);
-            } else {
-                btn.removeAttribute('data-cooldown');
+                if (ability.cooldown > 0) {
+                    btn.setAttribute('data-cooldown', ability.cooldown);
+                } else {
+                    btn.removeAttribute('data-cooldown');
+                }
             }
         }
     }
@@ -891,14 +1015,19 @@ function updateUI() {
     maybeShowAbilityHint();
 
     // Build Panel: Disable unaffordable towers
-    document.querySelectorAll('.tower-selector').forEach(el => {
-        const type = el.getAttribute('data-type');
-        const cost = TOWERS[type].cost;
-        if (money < cost) {
-            el.classList.add('disabled');
-        } else {
-            el.classList.remove('disabled');
-        }
-    });
+    if (lastBuildAffordMoney !== money || force) {
+        lastBuildAffordMoney = money;
+        document.querySelectorAll('.tower-selector').forEach(el => {
+            const type = el.getAttribute('data-type');
+            const cost = TOWERS[type].cost;
+            const disabled = money < cost;
+            if ((el.dataset.uiDisabled === '1') !== disabled) {
+                el.dataset.uiDisabled = disabled ? '1' : '0';
+                el.classList.toggle('disabled', disabled);
+            }
+        });
+    }
+
+    perfEnd('updateUI', perfUpdateUI);
 }
 
