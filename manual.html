@@ -328,7 +328,7 @@
 
 <body>
     <h1>NEON DEFENSE</h1>
-    <p style="text-align: center; font-style: italic;">OPERATIONS MANUAL V2.1</p>
+    <p style="text-align: center; font-style: italic;">OPERATIONS MANUAL V2.2</p>
 
     <h2>01. MISSION OBJECTIVE</h2>
     <p>Protect the <span class="green">CORE</span>. Enemies enter through active rifts and move toward the center of
@@ -345,6 +345,8 @@
             (Basic / Rapid / Sniper)</li>
         <li><span class="key">Left Click</span> Select tower/base/rift, or select an empty tile to open the build panel
             at that location</li>
+        <li><span class="key">Quick Build Flow</span> After placing a tower, that tower is auto-selected so you can
+            upgrade/sell immediately</li>
         <li><span class="key">U</span> Upgrade selected tower</li>
         <li><span class="key">Delete</span> / <span class="key">Backspace</span> Sell selected tower</li>
         <li><span class="key">1</span> EMP targeting mode</li>
@@ -486,6 +488,39 @@
     </div>
 
     <h2>06. WAVE & RIFT SYSTEM</h2>
+    <h3>Rift Topology Rules</h3>
+    <ul>
+        <li>Rift paths are orthogonal (no diagonal segments).</li>
+        <li>Paths cannot cross existing paths and cannot fold over themselves.</li>
+        <li>Rifts and paths cannot be placed over hardpoint cells.</li>
+        <li>Once a path enters <span class="highlight">Zone 0</span>, it must continue to core without exiting Zone 0.</li>
+        <li>Core approach uses six hardpoint gaps: one inner lane per gap; additional paths on the same gap must merge
+            before Zone 0.</li>
+    </ul>
+
+    <h3>Hardpoint Slots</h3>
+    <table>
+        <tr>
+            <th>SLOT TYPE</th>
+            <th>COUNT</th>
+            <th>POSITION</th>
+            <th>BONUS PROFILE</th>
+        </tr>
+        <tr>
+            <td>CORE</td>
+            <td>6</td>
+            <td>On Zone 0 border ring</td>
+            <td>Damage x1.08, Range x1.06, Cooldown x0.95</td>
+        </tr>
+        <tr>
+            <td>MICRO</td>
+            <td>24 (10 + 14)</td>
+            <td>Outer rings</td>
+            <td>Damage x0.82, Range x0.86, Cooldown x1.12</td>
+        </tr>
+    </table>
+
+    <h3>Wave Scaling & Rift Progression</h3>
     <ul>
         <li><span class="highlight">Wave Size</span>: <strong>5 + floor(wave * 2.5)</strong>.</li>
         <li><span class="highlight">Rift Expansion</span>: extra rifts are generated on waves 11/21/31/41/51, then every
@@ -557,8 +592,10 @@
     <ul>
         <li><span class="highlight">Boss Cadence</span>: guaranteed every 10th wave. After wave 50, certain 5-wave
             intervals can spawn an additional surprise boss (25% chance).</li>
-        <li><span class="highlight">Wave Intelligence</span>: click the WAVE label to open enemy capacity, anomaly
-            status, and threat-level intel.</li>
+        <li><span class="highlight">Wave Intelligence</span>: click the WAVE label to open rift count, mutation
+            potential, threat level, and enemy distribution.</li>
+        <li><span class="highlight">Top HUD Counter</span>: the right-side HUD shows real-time
+            <strong>REMAINING</strong> enemies in the current wave.</li>
     </ul>
 
     <h2>07. COMMANDER ABILITIES</h2>
@@ -596,6 +633,10 @@
         <li><span class="highlight">+1M CREDITS</span>: inject 1,000,000 credits instantly.</li>
         <li><span class="highlight">NEW RIFT</span>: force one additional rift.</li>
         <li><span class="highlight">LEVEL UP RIFT</span>: tier-up a random existing rift.</li>
+        <li><span class="highlight">+1 / +5 / +10 WAVE</span>: advance waves while applying wave progression systems.
+        </li>
+        <li><span class="highlight">REBUILD RIFTS</span>: clear and regenerate rift topology for the current wave
+            target.</li>
         <li><span class="highlight">TACTICAL SPAWN</span>: spawn specific enemy classes on demand.</li>
         <li><span class="highlight">TOGGLE OVERLAY</span>: visualize placement and pathing constraints.</li>
     </ul>

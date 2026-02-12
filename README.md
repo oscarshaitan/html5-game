@@ -68,8 +68,18 @@ python -m http.server 8000
 ```text
 html5-game/
   index.html
-  game.js
-  style.css
+  scripts/
+    00_core.js
+    01_init.js
+    02_game_control.js
+    03_abilities.js
+    04_tutorial.js
+    05_loop.js
+    06_render.js
+  styles/
+    00_base_ui.css
+    01_abilities_debug.css
+    02_tutorial_and_responsive.css
   manual.html
   technical_docs.html
   ROADMAP.md
@@ -94,5 +104,5 @@ html5-game/
 ## Notes
 
 - This project is framework-free by design.
-- Most gameplay logic is centralized in `game.js`.
-- Visual identity and layout behavior are defined in `style.css`.
+- Gameplay logic is split across `scripts/*.js`.
+- Visual identity and layout behavior are split across `styles/*.css`.

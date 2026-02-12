@@ -585,7 +585,7 @@ function resize() {
     canvas.width = width * dpr;
     canvas.height = height * dpr;
 
-    // CSS scaling handled by style.css (width: 100%, height: 100%)
+    // CSS scaling handled by styles/*.css (width: 100%, height: 100%)
     // But explicitly setting style matches logical size
     canvas.style.width = `${width}px`;
     canvas.style.height = `${height}px`;
