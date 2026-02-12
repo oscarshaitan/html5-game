@@ -3124,12 +3124,12 @@ function findPathOnGrid(start, end, obstacles, allowedObstacleKeys = null, optio
 window.selectTower = function (type) {
     if (buildTarget) {
         selectedTowerType = type;
-        buildTower(buildTarget.x, buildTarget.y);
-        deselectTower();
-
-        // Tutorial Step Advance
-        if (tutorialActive && tutorialStep === 3) {
-            nextTutorialStep();
+        const createdTower = buildTower(buildTarget.x, buildTarget.y);
+        if (createdTower) {
+            // Tutorial Step Advance
+            if (tutorialActive && tutorialStep === 3) {
+                nextTutorialStep();
+            }
         }
         return;
     }
@@ -3420,7 +3420,7 @@ function isValidPlacement(x, y, towerConfig) {
 }
 
 function buildTower(worldX, worldY) {
-    if (gameState !== 'playing') return;
+    if (gameState !== 'playing') return null;
 
     if (selectedTowerType) {
         const towerConfig = TOWERS[selectedTowerType];
@@ -3430,7 +3430,7 @@ function buildTower(worldX, worldY) {
             if (validation.reason === 'path' || validation.reason === 'tower') {
                 createParticles(validation.snap ? validation.snap.x : worldX, validation.snap ? validation.snap.y : worldY, '#ff0000', 5);
             }
-            return;
+            return null;
         }
 
         const selectedHardpoint = validation.hardpoint || null;
@@ -3445,7 +3445,7 @@ function buildTower(worldX, worldY) {
 
         // Place tower
         money -= towerConfig.cost;
-        towers.push({
+        const newTower = {
             x: validation.snap.x,
             y: validation.snap.y,
             ...towerConfig,
@@ -3458,12 +3458,19 @@ function buildTower(worldX, worldY) {
             hardpointId: selectedHardpoint ? selectedHardpoint.id : null,
             hardpointType: selectedHardpoint ? selectedHardpoint.type : null,
             hardpointScale: hardpointRules ? hardpointRules.sizeScale : 1
-        });
+        };
+        towers.push(newTower);
+
+        // Quick flow: keep the newly built tower selected for instant upgrades.
+        buildTarget = null;
+        selectPlacedTower(newTower);
 
         createParticles(validation.snap.x, validation.snap.y, towerConfig.color, 10);
         updateUI();
         saveGame(); // Save on build
+        return newTower;
     }
+    return null;
 }
 
 // --- Main Loop ---
