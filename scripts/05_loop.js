@@ -431,9 +431,12 @@ function isArcLinkPair(a, b) {
     const br = Math.floor(b.y / GRID_SIZE);
     const dc = Math.abs(ac - bc);
     const dr = Math.abs(ar - br);
+    const spacing = dc + dr;
+    const aligned = (dc === 0 && dr > 0) || (dr === 0 && dc > 0);
+    if (!aligned) return false;
 
-    return (dc === ARC_TOWER_RULES.linkSpacingCells && dr === 0)
-        || (dr === ARC_TOWER_RULES.linkSpacingCells && dc === 0);
+    return spacing >= ARC_TOWER_RULES.minLinkSpacingCells
+        && spacing <= ARC_TOWER_RULES.maxLinkSpacingCells;
 }
 
 function refreshArcTowerNetwork() {

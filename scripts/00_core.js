@@ -50,7 +50,8 @@ const TOWERS = {
 };
 
 const ARC_TOWER_RULES = {
-    linkSpacingCells: 6,
+    minLinkSpacingCells: 1,
+    maxLinkSpacingCells: 3,
     maxBonus: 5,
     staticThreshold: 20,
     stunFrames: 30, // 0.5s at 60 FPS

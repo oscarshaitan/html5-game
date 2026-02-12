@@ -112,7 +112,7 @@ Late-game losses should come from tactical or economic mistakes, not map geometr
 Implemented in current build:
 - Arc Tower (Control DPS / Utility)
   - Static charge system with stun trigger
-  - Network bonus from 6-cell Arc links (up to x5)
+  - Network bonus from 3-cell-or-less Arc links (up to x5)
   - Chain lightning with bonus-scaled bounce count
 
 1. Cryo Field Tower (Area Control)
