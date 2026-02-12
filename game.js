@@ -7,6 +7,12 @@ const GRID_SIZE = 40;
 const CANVAS_BG = '#050510';
 const DEBUG_UNLOCK_KEY = 'neonDefenseDebugUnlocked';
 const ZONE0_RADIUS_CELLS = 6;
+const WORLD_MIN_COLS = 140;
+const WORLD_MIN_ROWS = 90;
+const WORLD_VIEW_MARGIN_COLS = 12;
+const WORLD_VIEW_MARGIN_ROWS = 10;
+const WORLD_CONTENT_MARGIN_COLS = 14;
+const WORLD_CONTENT_MARGIN_ROWS = 14;
 const PATHING_RULES = {
     coreRepulsionRadius: 9,          // Grid cells
     coreRepulsionStrength: 14,       // Extra path cost near core
@@ -107,6 +113,8 @@ const ENEMIES = {
 // --- Game State ---
 let canvas, ctx;
 let width, height;
+let worldCols = WORLD_MIN_COLS;
+let worldRows = WORLD_MIN_ROWS;
 let lastTime = 0;
 let gameState = 'start'; // start, playing, gameover
 let wave = 1;
@@ -1108,6 +1116,53 @@ window.upgradeBase = function () {
     }
 }
 
+function getWorldGridSize() {
+    return {
+        cols: Math.max(1, worldCols || Math.floor(width / GRID_SIZE)),
+        rows: Math.max(1, worldRows || Math.floor(height / GRID_SIZE))
+    };
+}
+
+function getContentGridExtents() {
+    let maxC = 0;
+    let maxR = 0;
+    const includeWorldPoint = (x, y) => {
+        const c = Math.max(0, Math.floor(x / GRID_SIZE));
+        const r = Math.max(0, Math.floor(y / GRID_SIZE));
+        if (c > maxC) maxC = c;
+        if (r > maxR) maxR = r;
+    };
+
+    for (const path of paths) {
+        if (!path || !path.points) continue;
+        for (const pt of path.points) includeWorldPoint(pt.x, pt.y);
+    }
+    for (const t of towers) includeWorldPoint(t.x, t.y);
+    for (const hp of hardpoints) includeWorldPoint(hp.x, hp.y);
+
+    return { maxC, maxR };
+}
+
+function expandWorldBounds() {
+    const viewportCols = Math.max(1, Math.floor(width / GRID_SIZE));
+    const viewportRows = Math.max(1, Math.floor(height / GRID_SIZE));
+    const { maxC, maxR } = getContentGridExtents();
+
+    const requiredCols = Math.max(
+        WORLD_MIN_COLS,
+        viewportCols + WORLD_VIEW_MARGIN_COLS,
+        maxC + 1 + WORLD_CONTENT_MARGIN_COLS
+    );
+    const requiredRows = Math.max(
+        WORLD_MIN_ROWS,
+        viewportRows + WORLD_VIEW_MARGIN_ROWS,
+        maxR + 1 + WORLD_CONTENT_MARGIN_ROWS
+    );
+
+    worldCols = Math.max(worldCols || 0, requiredCols);
+    worldRows = Math.max(worldRows || 0, requiredRows);
+}
+
 function resize() {
     const dpr = window.devicePixelRatio || 1;
 
@@ -1125,7 +1180,8 @@ function resize() {
     canvas.style.height = `${height}px`;
 
     // Scale drawing context so we use logical coordinates
-    ctx.scale(dpr, dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    expandWorldBounds();
 
     // Only regenerate paths on initial load, not during active gameplay
     if (gameState === 'start') {
@@ -1155,8 +1211,7 @@ function getCoreGridNode() {
         };
     }
 
-    const cols = Math.floor(width / GRID_SIZE);
-    const rows = Math.floor(height / GRID_SIZE);
+    const { cols, rows } = getWorldGridSize();
     return {
         c: Math.floor(cols / 2),
         r: Math.floor(rows / 2)
@@ -1188,8 +1243,7 @@ function addHardpointRing(target, keySet, centerC, centerR, cols, rows, count, r
 function buildHardpoints() {
     hardpoints = [];
 
-    const cols = Math.floor(width / GRID_SIZE);
-    const rows = Math.floor(height / GRID_SIZE);
+    const { cols, rows } = getWorldGridSize();
     if (cols <= 0 || rows <= 0) return;
 
     const core = getCoreGridNode();
@@ -1358,8 +1412,7 @@ function calculatePath() {
     paths = [];
 
     // Grid dimensions
-    const cols = Math.floor(width / GRID_SIZE);
-    const rows = Math.floor(height / GRID_SIZE);
+    const { cols, rows } = getWorldGridSize();
 
     // Target: Center of map
     const centerC = Math.floor(cols / 2);
@@ -1433,6 +1486,9 @@ function calculatePath() {
     }
 
     buildHardpoints();
+    if (typeof window.resetCamera === 'function') {
+        window.resetCamera();
+    }
 }
 
 // --- Game Control ---
@@ -1762,7 +1818,9 @@ window.saveGame = function () {
         })),
         baseLevel, baseCooldown, energy,
         playerName, totalKills,
-        pendingRiftGenerations
+        pendingRiftGenerations,
+        worldCols,
+        worldRows
     };
 
     localStorage.setItem('neonDefenseSave', JSON.stringify(data));
@@ -1777,6 +1835,13 @@ window.loadGame = function () {
     }
 
     const data = JSON.parse(raw);
+    const hasSavedWorldBounds = Number.isFinite(Number(data.worldCols)) && Number(data.worldCols) > 0
+        && Number.isFinite(Number(data.worldRows)) && Number(data.worldRows) > 0;
+    if (hasSavedWorldBounds) {
+        worldCols = Math.max(WORLD_MIN_COLS, Math.floor(Number(data.worldCols)));
+        worldRows = Math.max(WORLD_MIN_ROWS, Math.floor(Number(data.worldRows)));
+    }
+
     money = data.money;
     lives = data.lives;
     wave = data.wave;
@@ -1790,7 +1855,6 @@ window.loadGame = function () {
             return p;
         });
     }
-    buildHardpoints();
 
     baseLevel = data.baseLevel || 0;
     baseCooldown = data.baseCooldown || 0;
@@ -1807,6 +1871,9 @@ window.loadGame = function () {
         cooldown: t.cooldown || 0,
         maxCooldown: t.maxCooldown || t.cooldown || 30
     }));
+
+    expandWorldBounds();
+    buildHardpoints();
 
     // Reset transient state
     enemies = [];
@@ -1834,6 +1901,9 @@ window.loadGame = function () {
     if (document.getElementById('sfx-slider')) document.getElementById('sfx-slider').value = AudioEngine.sfxVol;
 
     updateUI();
+    if (typeof window.resetCamera === 'function') {
+        window.resetCamera();
+    }
     // If we loaded into an active wave, we might want to just reset to prep phase
     // to avoid "instant death" upon loading or complex enemy state sync
     if (isWaveActive) {
@@ -2419,8 +2489,7 @@ function generateNewPath(options = {}) {
     if (!hardpoints.length) buildHardpoints();
 
     // Target: Center (Base)
-    const cols = Math.floor(width / GRID_SIZE);
-    const rows = Math.floor(height / GRID_SIZE);
+    const { cols, rows } = getWorldGridSize();
 
     let centerC = Math.floor(cols / 2);
     let centerR = Math.floor(rows / 2);
@@ -2922,8 +2991,7 @@ function generateNewPath(options = {}) {
 }
 
 function findPathOnGrid(start, end, obstacles, allowedObstacleKeys = null, options = {}) {
-    const cols = Math.floor(width / GRID_SIZE);
-    const rows = Math.floor(height / GRID_SIZE);
+    const { cols, rows } = getWorldGridSize();
 
     const startNode = { c: start.c, r: start.r };
     const endNode = { c: end.c, r: end.r };
@@ -3139,8 +3207,7 @@ function getSelectionAnchorWorldPos() {
             return { x: basePoint.x, y: basePoint.y };
         }
 
-        const cols = Math.floor(width / GRID_SIZE);
-        const rows = Math.floor(height / GRID_SIZE);
+        const { cols, rows } = getWorldGridSize();
         return {
             x: Math.floor(cols / 2) * GRID_SIZE + GRID_SIZE / 2,
             y: Math.floor(rows / 2) * GRID_SIZE + GRID_SIZE / 2
