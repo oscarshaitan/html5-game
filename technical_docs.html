@@ -115,6 +115,76 @@
             box-shadow: 0 0 10px rgba(0, 243, 255, 0.4);
         }
 
+        .controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin: 0 0 18px;
+            padding: 10px 12px;
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 10px;
+            box-shadow: var(--panel-shadow);
+        }
+
+        .controls label {
+            color: var(--neon-green);
+            font-size: 0.78rem;
+            font-weight: 700;
+            letter-spacing: 0.8px;
+        }
+
+        .controls input {
+            flex: 1;
+            min-width: 220px;
+            background: rgba(0, 243, 255, 0.06);
+            border: 1px solid rgba(0, 243, 255, 0.35);
+            border-radius: 6px;
+            padding: 8px 10px;
+            color: #d4f7ff;
+            font-family: inherit;
+            font-size: 0.86rem;
+        }
+
+        .controls input:focus {
+            outline: none;
+            border-color: var(--neon-blue);
+            box-shadow: 0 0 0 2px rgba(0, 243, 255, 0.2);
+        }
+
+        .controls button {
+            background: rgba(255, 0, 172, 0.1);
+            color: #ffd2ef;
+            border: 1px solid rgba(255, 0, 172, 0.5);
+            border-radius: 6px;
+            padding: 8px 10px;
+            font-family: inherit;
+            font-size: 0.78rem;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .controls button:hover {
+            box-shadow: 0 0 10px rgba(255, 0, 172, 0.35);
+        }
+
+        #resultCount {
+            color: #8bc9dc;
+            font-size: 0.76rem;
+            min-width: 122px;
+            text-align: right;
+        }
+
+        #noResults {
+            margin: 8px 0 2px;
+            padding: 10px 12px;
+            color: #ffd2ef;
+            border: 1px solid rgba(255, 0, 172, 0.45);
+            background: rgba(255, 0, 172, 0.08);
+            border-radius: 8px;
+        }
+
         .method {
             background: var(--panel-bg);
             padding: 14px;
@@ -166,6 +236,14 @@
                 margin-bottom: 18px;
             }
 
+            .controls {
+                margin-bottom: 14px;
+            }
+
+            #resultCount {
+                text-align: left;
+            }
+
             .method {
                 padding: 11px;
             }
@@ -191,6 +269,16 @@
         <a href="#audio">AUDIO</a>
         <a href="#debug">DEBUG</a>
     </nav>
+
+    <div class="controls">
+        <label for="docSearch">FILTER</label>
+        <input id="docSearch" type="search"
+            placeholder="Search methods, sections, or keywords (shortcut: /)"
+            aria-label="Filter technical documentation">
+        <button id="clearSearch" type="button">CLEAR</button>
+        <span id="resultCount" aria-live="polite"></span>
+    </div>
+    <p id="noResults" hidden>No matches found for the current filter.</p>
 
     <h2 id="state">01. ENGINE STATE & BOOT</h2>
     <div class="method">
@@ -383,6 +471,73 @@
     </div>
 
     <p style="text-align: center; margin-top: 80px; color: #6a7c85;">NEON DEFENSE ENGINE INTERNAL REFERENCE</p>
+
+    <script>
+        (function () {
+            const searchInput = document.getElementById('docSearch');
+            const clearButton = document.getElementById('clearSearch');
+            const resultCount = document.getElementById('resultCount');
+            const noResults = document.getElementById('noResults');
+            const methods = Array.from(document.querySelectorAll('.method'));
+            const sections = Array.from(document.querySelectorAll('h2[id]'));
+
+            const records = methods.map((method) => {
+                let section = method.previousElementSibling;
+                while (section && section.tagName !== 'H2') {
+                    section = section.previousElementSibling;
+                }
+                return { method, section };
+            });
+
+            function updateCount(visibleMethods, totalMethods) {
+                resultCount.textContent = `${visibleMethods} / ${totalMethods} methods`;
+            }
+
+            function applyFilter(rawQuery) {
+                const query = rawQuery.trim().toLowerCase();
+                const visibleSections = new Set();
+                let visibleMethods = 0;
+
+                records.forEach(({ method, section }) => {
+                    const text = method.textContent.toLowerCase();
+                    const sectionText = section ? section.textContent.toLowerCase() : '';
+                    const isVisible = !query || text.includes(query) || sectionText.includes(query);
+
+                    method.hidden = !isVisible;
+                    if (isVisible) {
+                        visibleMethods += 1;
+                        if (section) visibleSections.add(section);
+                    }
+                });
+
+                sections.forEach((section) => {
+                    section.hidden = !visibleSections.has(section) && Boolean(query);
+                });
+
+                noResults.hidden = visibleMethods > 0 || query.length === 0;
+                updateCount(visibleMethods, methods.length);
+            }
+
+            searchInput.addEventListener('input', (event) => {
+                applyFilter(event.target.value);
+            });
+
+            clearButton.addEventListener('click', () => {
+                searchInput.value = '';
+                applyFilter('');
+                searchInput.focus();
+            });
+
+            document.addEventListener('keydown', (event) => {
+                if (event.key === '/' && document.activeElement !== searchInput) {
+                    event.preventDefault();
+                    searchInput.focus();
+                }
+            });
+
+            updateCount(methods.length, methods.length);
+        })();
+    </script>
 </body>
 
 </html>
