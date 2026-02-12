@@ -62,6 +62,7 @@ function update() {
     updateTowers();
     updateProjectiles();
     updateParticles();
+    updateArcEffects();
 
     if (lives <= 0) {
         gameState = 'gameover';
@@ -132,6 +133,8 @@ function spawnEnemy() {
         isMutant: isMutant, // Track mutation status
         mutationKey: mutation ? mutation.key : null,
         frozen: 0,
+        staticCharges: 0,
+        staticStunTimer: 0,
         type: enemyType // Store the type for drawing/logic
     };
 
@@ -167,6 +170,8 @@ function spawnSubUnits(parent) {
             isMutant: parent.isMutant,
             mutationKey: parent.mutationKey,
             frozen: 0,
+            staticCharges: 0,
+            staticStunTimer: 0,
             type: 'mini'
         });
     }
@@ -202,6 +207,8 @@ window.debugSpawn = function (type) {
         riftLevel: riftLevel,
         isMutant: false,
         frozen: 0,
+        staticCharges: 0,
+        staticStunTimer: 0,
         type: type
     });
 
@@ -265,6 +272,8 @@ window.debugIncreaseWave = function (steps = 1, autoStart = true) {
     enemies = [];
     projectiles = [];
     particles = [];
+    arcLightningBursts = [];
+    arcTowerLinks = [];
     spawnQueue = [];
     isWaveActive = false;
 
@@ -281,6 +290,8 @@ window.debugIncreaseWave = function (steps = 1, autoStart = true) {
             enemies = [];
             projectiles = [];
             particles = [];
+            arcLightningBursts = [];
+            arcTowerLinks = [];
             spawnQueue = [];
             isWaveActive = false;
         }
@@ -303,6 +314,8 @@ window.debugRebuildRiftsByWave = function () {
     enemies = [];
     projectiles = [];
     particles = [];
+    arcLightningBursts = [];
+    arcTowerLinks = [];
     spawnQueue = [];
     isWaveActive = false;
     selectedRift = null;
@@ -350,11 +363,18 @@ function updateEnemies() {
 
         // Handle Status Effects
         if (e.frozen) {
+            if (e.staticStunTimer > 0) e.staticStunTimer--;
             e.frozenTimer--;
             if (e.frozenTimer <= 0) e.frozen = false;
             // Draw frozen particles?
             if (frameCount % 10 === 0) createParticles(e.x, e.y, '#00f3ff', 1);
             continue; // Frozen enemies don't move
+        }
+
+        if (e.staticStunTimer > 0) {
+            e.staticStunTimer--;
+            if (frameCount % 8 === 0) createParticles(e.x, e.y, '#7cd7ff', 1);
+            continue; // Stunned enemies don't move
         }
 
         // Move towards next waypoint
@@ -397,7 +417,153 @@ function updateEnemies() {
     }
 }
 
+function updateArcEffects() {
+    for (let i = arcLightningBursts.length - 1; i >= 0; i--) {
+        arcLightningBursts[i].life--;
+        if (arcLightningBursts[i].life <= 0) arcLightningBursts.splice(i, 1);
+    }
+}
+
+function isArcLinkPair(a, b) {
+    const ac = Math.floor(a.x / GRID_SIZE);
+    const ar = Math.floor(a.y / GRID_SIZE);
+    const bc = Math.floor(b.x / GRID_SIZE);
+    const br = Math.floor(b.y / GRID_SIZE);
+    const dc = Math.abs(ac - bc);
+    const dr = Math.abs(ar - br);
+
+    return (dc === ARC_TOWER_RULES.linkSpacingCells && dr === 0)
+        || (dr === ARC_TOWER_RULES.linkSpacingCells && dc === 0);
+}
+
+function refreshArcTowerNetwork() {
+    const arcTowers = towers.filter(t => t.type === 'arc');
+    arcTowerLinks = [];
+
+    if (arcTowers.length === 0) return;
+
+    const adjacency = new Map();
+    for (const tower of arcTowers) adjacency.set(tower, []);
+
+    for (let i = 0; i < arcTowers.length; i++) {
+        for (let j = i + 1; j < arcTowers.length; j++) {
+            const a = arcTowers[i];
+            const b = arcTowers[j];
+            if (!isArcLinkPair(a, b)) continue;
+            adjacency.get(a).push(b);
+            adjacency.get(b).push(a);
+            arcTowerLinks.push({ a, b, strength: 1 });
+        }
+    }
+
+    const visited = new Set();
+    for (const tower of arcTowers) {
+        if (visited.has(tower)) continue;
+
+        const stack = [tower];
+        const component = [];
+        visited.add(tower);
+
+        while (stack.length > 0) {
+            const node = stack.pop();
+            component.push(node);
+            const nextNodes = adjacency.get(node) || [];
+            for (const next of nextNodes) {
+                if (visited.has(next)) continue;
+                visited.add(next);
+                stack.push(next);
+            }
+        }
+
+        const bonus = Math.max(1, Math.min(ARC_TOWER_RULES.maxBonus, component.length));
+        for (const node of component) {
+            node.arcNetworkBonus = bonus;
+            node.arcNetworkSize = component.length;
+        }
+    }
+
+    for (const link of arcTowerLinks) {
+        link.strength = Math.max(1, Math.min(
+            ARC_TOWER_RULES.maxBonus,
+            Math.max(link.a.arcNetworkBonus || 1, link.b.arcNetworkBonus || 1)
+        ));
+    }
+}
+
+function addArcLightningBurst(x1, y1, x2, y2, intensity = 1, isChain = false) {
+    arcLightningBursts.push({
+        x1,
+        y1,
+        x2,
+        y2,
+        intensity: Math.max(1, Math.min(ARC_TOWER_RULES.maxBonus, intensity || 1)),
+        isChain: !!isChain,
+        life: isChain ? 7 : 8
+    });
+}
+
+function applyStaticCharges(enemy, amount) {
+    if (!enemy || amount <= 0) return;
+
+    enemy.staticCharges = Math.max(0, (enemy.staticCharges || 0) + amount);
+    createParticles(enemy.x, enemy.y, '#7cd7ff', Math.min(6, 2 + amount));
+
+    while (enemy.staticCharges >= ARC_TOWER_RULES.staticThreshold) {
+        enemy.staticCharges -= ARC_TOWER_RULES.staticThreshold;
+        enemy.staticStunTimer = Math.max(enemy.staticStunTimer || 0, ARC_TOWER_RULES.stunFrames);
+        createParticles(enemy.x, enemy.y, '#b7eaff', 9);
+        lightSources.push({ x: enemy.x, y: enemy.y, radius: 70, color: '#7cd7ff', life: 1.0 });
+    }
+}
+
+function findArcBounceTarget(fromX, fromY, visited) {
+    let target = null;
+    let minDist = Infinity;
+    for (const enemy of enemies) {
+        if (!enemy || enemy.hp <= 0 || enemy.isInvisible || visited.has(enemy)) continue;
+        const dist = Math.hypot(enemy.x - fromX, enemy.y - fromY);
+        if (dist <= ARC_TOWER_RULES.chainRange && dist < minDist) {
+            minDist = dist;
+            target = enemy;
+        }
+    }
+    return target;
+}
+
+function fireArcTower(tower, target) {
+    const bonus = Math.max(1, Math.min(ARC_TOWER_RULES.maxBonus, tower.arcNetworkBonus || 1));
+    const directDamage = tower.damage;
+    const bounceDamage = Math.max(1, tower.damage * ARC_TOWER_RULES.bounceDamageMult);
+
+    addArcLightningBurst(tower.x, tower.y, target.x, target.y, bonus, false);
+    hitEnemy(target, directDamage, { staticCharges: bonus });
+
+    const visited = new Set();
+    visited.add(target);
+
+    let fromX = target.x;
+    let fromY = target.y;
+    const maxBounces = ARC_TOWER_RULES.baseChainTargets + (bonus * ARC_TOWER_RULES.extraChainPerBonus);
+
+    for (let i = 0; i < maxBounces; i++) {
+        const bounceTarget = findArcBounceTarget(fromX, fromY, visited);
+        if (!bounceTarget) break;
+
+        addArcLightningBurst(fromX, fromY, bounceTarget.x, bounceTarget.y, bonus, true);
+        hitEnemy(bounceTarget, bounceDamage, { staticCharges: 1 });
+
+        visited.add(bounceTarget);
+        fromX = bounceTarget.x;
+        fromY = bounceTarget.y;
+    }
+
+    lightSources.push({ x: tower.x, y: tower.y, radius: 46, color: tower.color, life: 1.0 });
+    AudioEngine.playSFX('shoot');
+}
+
 function updateTowers() {
+    refreshArcTowerNetwork();
+
     // Update Towers
     for (let t of towers) {
         // Handle Cooldown & Overclock
@@ -490,6 +656,11 @@ function updateTowers() {
 }
 
 function shoot(tower, target) {
+    if (tower.type === 'arc') {
+        fireArcTower(tower, target);
+        return;
+    }
+
     projectiles.push({
         x: tower.x,
         y: tower.y,
@@ -520,7 +691,7 @@ function updateProjectiles() {
 
         if (dist < p.speed) {
             // Hit
-            hitEnemy(t, p.damage);
+            hitEnemy(t, p.damage, null);
             projectiles.splice(i, 1);
         } else {
             p.x += (dx / dist) * p.speed;
@@ -529,7 +700,11 @@ function updateProjectiles() {
     }
 }
 
-function hitEnemy(enemy, damage) {
+function hitEnemy(enemy, damage, hitData = null) {
+    if (hitData && hitData.staticCharges) {
+        applyStaticCharges(enemy, hitData.staticCharges);
+    }
+
     if (enemy.frozen) damage *= 1.2;
     enemy.hp -= damage;
     if (enemy.hp <= 0) {

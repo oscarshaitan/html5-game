@@ -8,7 +8,6 @@ It is intentionally focused on design suggestions, not code changes.
 - Core game idea and loop risks
 - Mechanical risks by game phase
 - Difficulty curve review (early, mid, late)
-- Late-game path congestion near the core
 - New tower mechanics and modifier ideas
 - Tech Tree strategy layer proposal
 
@@ -66,70 +65,12 @@ Late-game losses should come from tactical or economic mistakes, not map geometr
 - Extreme stat scaling can invalidate tactical play windows
 
 ### Suggestions
-- Reserve strategic space near core by rule (see Section 3)
 - Introduce survival tools that scale with path count, not only enemy HP
 - Keep reaction windows by capping simultaneous high-impact effects per interval
 
 ---
 
-## 3. Late-Game Core Congestion (Your Main Reported Problem)
-
-Problem summary: as path count increases, buildable tiles near core approach zero, reducing tactical agency.
-
-### Solution Set A: Spatial Protection Rules
-
-1. Core Exclusion Ring
-- Reserve a minimum buildable ring around the core that paths cannot occupy.
-- Benefit: preserves late-game agency.
-- Risk: can reduce path diversity if ring is too large.
-
-2. Soft Repulsion Cost Near Core
-- Paths can still enter near-core zones, but pathfinder cost rises sharply there.
-- Benefit: organic routing without hard bans.
-- Risk: needs tuning to avoid trivializing path difficulty.
-
-3. Dynamic Core Proximity Budget
-- Allow only N path segments inside a core radius.
-- Benefit: direct control of chaos level.
-- Risk: can feel artificial without visual explanation.
-
-### Solution Set B: Defensive Compensation
-
-1. Core Hardpoint Slots
-- Permanent build anchors near core, independent of path occupancy.
-- Benefit: keeps tower expression available.
-- Risk: could become mandatory if too strong.
-
-2. Emergency Core Modules
-- Late unlocks that trigger when nearby space drops below threshold.
-- Example: temporary denial field, path reroute pulse, fortified choke zone.
-
-3. Adaptive Build Grants
-- If near-core buildable cells fall below threshold, grant one deployable "platform node."
-- Benefit: preserves fairness in extreme runs.
-
-### Solution Set C: Path Network Shaping
-
-1. Path Merging Incentives
-- Encourage outer paths to merge earlier before center approach.
-- Benefit: fewer independent core-adjacent lanes.
-
-2. Rotation Rule
-- New paths preferentially spawn in lower-density sectors.
-- Benefit: prevents repeated center-line saturation from one side.
-
-3. Segment Retirement
-- Rarely retire one low-impact segment when adding a new high-impact segment late game.
-- Benefit: total pressure stays high while footprint stays controlled.
-
-### Recommended Hybrid
-
-- Soft Repulsion Near Core + Core Hardpoint Slots + Path Merging Incentives
-- This combination preserves organic path behavior while guaranteeing tactical space.
-
----
-
-## 4. Potential Flaws in Current Mechanics and Fix Directions
+## 3. Potential Flaws in Current Mechanics and Fix Directions
 
 ## A. Economy Volatility
 
@@ -164,25 +105,25 @@ Problem summary: as path count increases, buildable tiles near core approach zer
 
 ---
 
-## 5. New Tower Mechanics (Ideas)
+## 4. New Tower Mechanics (Ideas)
 
 ## New Towers
 
-1. Arc Tower (Control DPS)
-- Chains between enemies with falloff.
-- Upgrade path split:
-  - Longer chain count
-  - Higher stun accumulation
+Implemented in current build:
+- Arc Tower (Control DPS / Utility)
+  - Static charge system with stun trigger
+  - Network bonus from 6-cell Arc links (up to x5)
+  - Chain lightning with bonus-scaled bounce count
 
-2. Cryo Field Tower (Area Control)
+1. Cryo Field Tower (Area Control)
 - Low direct DPS, stacks chill leading to freeze vulnerability.
 - Synergy: boosts crit chance from Sniper-like towers against chilled targets.
 
-3. Siege Mortar (Burst AOE)
+2. Siege Mortar (Burst AOE)
 - Delayed shell travel, high splash, armor shred on hit.
 - Great for pre-fired choke zones.
 
-4. Prism Tower (Adaptive Beam)
+3. Prism Tower (Adaptive Beam)
 - Single beam splits when modifiers are installed.
 - Can be tuned into anti-boss or anti-swarm via mods.
 
@@ -205,7 +146,7 @@ Problem summary: as path count increases, buildable tiles near core approach zer
 
 ---
 
-## 6. Tech Tree Concept (Custom Strategy Progression)
+## 5. Tech Tree Concept (Custom Strategy Progression)
 
 Goal: allow players to define strategic identity, not only react tactically.
 
@@ -245,21 +186,19 @@ Goal: allow players to define strategic identity, not only react tactically.
 
 ---
 
-## 7. Practical Balancing Roadmap (Recommended)
+## 6. Practical Balancing Roadmap (Recommended)
 
-1. Solve core-space lockout first (Section 3 hybrid)
-2. Add one new control tower + one modifier lane
-3. Add lightweight Tech Tree v1 (8-12 nodes total)
-4. Gather telemetry:
+1. Add one new control tower + one modifier lane
+2. Add lightweight Tech Tree v1 (8-12 nodes total)
+3. Gather telemetry:
 - average loss wave
 - loss reason tags
 - tower usage distribution
-- path congestion index near core
-5. Iterate every two releases using telemetry and player reports
+4. Iterate every two releases using telemetry and player reports
 
 ---
 
-## 8. Final Design Principle
+## 7. Final Design Principle
 
 If the game gets harder while giving fewer meaningful options, frustration rises.
 If the game gets harder while giving deeper strategic tools, mastery rises.

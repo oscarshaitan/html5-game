@@ -47,6 +47,9 @@ window.onload = () => {
             case 'e':
                 if (buildVisible) selectTower('sniper');
                 break;
+            case 'r':
+                if (buildVisible) selectTower('arc');
+                break;
             case 'u':
                 if (selectionVisible && selectedPlacedTower) upgradeTower();
                 break;

@@ -45,7 +45,19 @@ const HARDPOINT_RULES = {
 const TOWERS = {
     basic: { cost: 50, range: 100, damage: 10, cooldown: 30, color: '#00f3ff', type: 'basic' },
     rapid: { cost: 120, range: 80, damage: 4, cooldown: 10, color: '#fcee0a', type: 'rapid' },
-    sniper: { cost: 200, range: 250, damage: 50, cooldown: 90, color: '#ff00ac', type: 'sniper' }
+    sniper: { cost: 200, range: 250, damage: 50, cooldown: 90, color: '#ff00ac', type: 'sniper' },
+    arc: { cost: 180, range: 150, damage: 8, cooldown: 34, color: '#7cd7ff', type: 'arc' }
+};
+
+const ARC_TOWER_RULES = {
+    linkSpacingCells: 6,
+    maxBonus: 5,
+    staticThreshold: 20,
+    stunFrames: 30, // 0.5s at 60 FPS
+    baseChainTargets: 3,
+    extraChainPerBonus: 1,
+    chainRange: GRID_SIZE * 4,
+    bounceDamageMult: 0.7
 };
 
 window.toggleNoBuildOverlay = function () {
@@ -132,6 +144,8 @@ let projectiles = [];
 let particles = [];
 let paths = []; // Array of arrays of points
 let hardpoints = [];
+let arcTowerLinks = []; // {a, b, strength}
+let arcLightningBursts = []; // transient lightning segments
 
 let spawnQueue = []; // New: Array of enemy types to spawn
 let spawnTimer = 0;

@@ -71,7 +71,7 @@ Focus: keep late game solvable while preserving tension.
 ## Milestone D: Tower and Buildcraft Expansion
 
 ### D1. New Tower Concepts
-- [ ] Arc Tower: chain lightning with diminishing jumps
+- [x] Arc Tower: chain lightning with diminishing jumps
 - [ ] Cryo Field Tower: persistent slow zone and freeze buildup
 - [ ] Siege Mortar: delayed AOE with armor break utility
 - [ ] Prism Tower: beam splits based on nearby modifiers
@@ -145,4 +145,4 @@ Goal: custom strategy progression that changes decision-making each run.
 
 ---
 
-Last updated: 2026-02-11
+Last updated: 2026-02-12

@@ -15,7 +15,7 @@ You defend the core against escalating waves, expanding Rift networks, elite pat
 ## Core Features
 
 ### Combat Loop
-- Three tower classes: Basic, Rapid, Sniper
+- Four tower classes: Basic, Rapid, Sniper, Arc
 - Tower upgrades and sell flow
 - Base upgrades and life repair
 - Enemy variety including Boss, Splitter, Bulwark, and Shifter behaviors
@@ -42,7 +42,7 @@ You defend the core against escalating waves, expanding Rift networks, elite pat
 - Left click: select/interact/place
 - Drag: pan camera
 - Mouse wheel: zoom
-- `Q` / `W` / `E`: select tower type
+- `Q` / `W` / `E` / `R`: select tower type
 - `1` / `2`: ability targeting
 - `U`: upgrade selected tower
 - `Delete` / `Backspace`: sell selected tower

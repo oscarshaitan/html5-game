@@ -67,7 +67,7 @@ function updateTutorialBox() {
             isPaused = true;
             break;
         case 2:
-            text = "First, select a tactical position. <strong>Tap an empty square</strong> on the grid near the Core to target it.";
+            text = "First, select a tactical position.<br><strong>Hardpoint:</strong> fixed anchor slot with placement bonuses.<br><strong>Soft point:</strong> any normal empty grid tile without slot bonuses.<br>Now <strong>tap an empty square</strong> near the Core to target it.";
             isPaused = false; // Allow interaction
             overlay.classList.add('allow-game-input');
             overlay.style.pointerEvents = 'none';
@@ -983,6 +983,8 @@ function updateSelectionUI() {
     const upgradeCost = getUpgradeCost(t);
     const refund = Math.floor((t.totalCost || t.cost) * 0.7);
     const hardpointLabel = t.hardpointType === 'core' ? 'CORE HARDPOINT' : (t.hardpointType === 'micro' ? 'MICRO HARDPOINT' : null);
+    const arcBonus = Math.max(1, Math.min(ARC_TOWER_RULES.maxBonus, t.arcNetworkBonus || 1));
+    const arcChain = ARC_TOWER_RULES.baseChainTargets + (arcBonus * ARC_TOWER_RULES.extraChainPerBonus);
 
     panel.classList.remove('hidden');
     panel.innerHTML = `
@@ -992,6 +994,9 @@ function updateSelectionUI() {
             <div id="sel-level">Level: ${t.level}</div>
             <div id="sel-damage">Damage: ${Math.floor(t.damage)}</div>
             <div id="sel-range">Range: ${Math.floor(t.range)}</div>
+            ${t.type === 'arc' ? `<div id="sel-arc-bonus">Arc Link Bonus: x${arcBonus}</div>` : ''}
+            ${t.type === 'arc' ? `<div id="sel-arc-static">Direct Static: +${arcBonus} charge(s)</div>` : ''}
+            ${t.type === 'arc' ? `<div id="sel-arc-chain">Chain Targets: ${arcChain} bounce(s)</div>` : ''}
             ${hardpointLabel ? `<div id="sel-slot">Mount: ${hardpointLabel}</div>` : ''}
         </div>
         <div class="actions">
@@ -1093,6 +1098,8 @@ function buildTower(worldX, worldY) {
             y: validation.snap.y,
             ...towerConfig,
             level: 1,
+            arcNetworkBonus: selectedTowerType === 'arc' ? 1 : undefined,
+            arcNetworkSize: selectedTowerType === 'arc' ? 1 : undefined,
             totalCost: towerConfig.cost,
             cooldown: 0, // Current cooldown
             maxCooldown: maxCooldown, // Store original cooldown as max

@@ -324,6 +324,8 @@ window.loadGame = function () {
     // Restore towers
     towers = (data.towers || []).map(t => ({
         ...t,
+        arcNetworkBonus: t.arcNetworkBonus || 1,
+        arcNetworkSize: t.arcNetworkSize || 1,
         hardpointScale: t.hardpointScale || 1,
         cooldown: t.cooldown || 0,
         maxCooldown: t.maxCooldown || t.cooldown || 30
@@ -336,6 +338,8 @@ window.loadGame = function () {
     enemies = [];
     projectiles = [];
     particles = [];
+    arcTowerLinks = [];
+    arcLightningBursts = [];
     selectedPlacedTower = null;
     selectedTowerType = null;
     selectedBase = false;
@@ -509,7 +513,7 @@ window.shareGame = async function () {
         }
 
         // 2. TOWERS PANEL
-        const towerHeight = 140;
+        const towerHeight = 168;
         const tx = padding;
         const ty = bannerHeight + padding;
         octx.fillStyle = 'rgba(5, 5, 16, 0.95)';
@@ -527,7 +531,7 @@ window.shareGame = async function () {
         octx.fillText(`CORE: LVL ${baseLevel + 1} | ${lives} LIVES`, tx + 10, ty + 45);
 
         let ty_off = ty + 70;
-        ['basic', 'rapid', 'sniper'].forEach(type => {
+        ['basic', 'rapid', 'sniper', 'arc'].forEach(type => {
             const config = TOWERS[type];
             const typeTowers = towers.filter(t => t.type === type);
             const avgLevel = typeTowers.length > 0 ? Math.round(typeTowers.reduce((sum, t) => sum + t.level, 0) / typeTowers.length) : 0;
@@ -539,7 +543,17 @@ window.shareGame = async function () {
             octx.beginPath();
             if (type === 'basic') octx.rect(ix - 6, iy - 6, 12, 12);
             else if (type === 'rapid') octx.arc(ix, iy, 6, 0, Math.PI * 2);
-            else { octx.save(); octx.translate(ix, iy); octx.rotate(Math.PI / 4); octx.rect(-6, -6, 12, 12); octx.restore(); }
+            else if (type === 'sniper') { octx.save(); octx.translate(ix, iy); octx.rotate(Math.PI / 4); octx.rect(-6, -6, 12, 12); octx.restore(); }
+            else {
+                for (let i = 0; i < 6; i++) {
+                    const a = (Math.PI * 2 * i / 6) - Math.PI / 2;
+                    const x = ix + Math.cos(a) * 6;
+                    const y = iy + Math.sin(a) * 6;
+                    if (i === 0) octx.moveTo(x, y);
+                    else octx.lineTo(x, y);
+                }
+                octx.closePath();
+            }
             octx.fill();
 
             octx.font = '11px Orbitron, sans-serif';
@@ -599,6 +613,8 @@ function resetGameLogic() {
 
     baseLevel = 0; // Reset base
     towers = [];
+    arcTowerLinks = [];
+    arcLightningBursts = [];
     selectedTowerType = 'basic';
     selectedPlacedTower = null;
     selectedBase = false;
@@ -610,6 +626,7 @@ function resetGameLogic() {
     enemies = [];
     projectiles = [];
     particles = [];
+    arcLightningBursts = [];
     spawnQueue = []; // Clear spawn queue on reset
 
     // Reset paths to initial state

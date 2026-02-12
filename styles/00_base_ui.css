@@ -447,6 +447,13 @@ canvas {
     transform: rotate(45deg);
 }
 
+.arc-icon {
+    background: radial-gradient(circle at 30% 30%, #d9f5ff 8%, #7cd7ff 52%, #2f91c2 100%);
+    border-color: #7cd7ff;
+    box-shadow: 0 0 8px #7cd7ff;
+    clip-path: polygon(50% 0%, 88% 20%, 88% 80%, 50% 100%, 12% 80%, 12% 20%);
+}
+
 .tower-cost {
     font-size: 0.8rem;
     color: white;

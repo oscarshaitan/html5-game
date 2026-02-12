@@ -294,6 +294,7 @@ function draw() {
             drawLevelPips(t.level, t.x, t.y + 20);
         }
     }
+    drawArcTowerLinks();
 
     // Rift Selection Ring
     if (selectedRift) {
@@ -404,6 +405,7 @@ function draw() {
         ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
         ctx.fill();
     }
+    drawArcLightningBursts();
 
     // Draw Particles
     for (let p of particles) {
@@ -456,6 +458,53 @@ function draw() {
             ctx.beginPath();
             ctx.arc(e.x, e.y, e.width / 2, 0, Math.PI * 2);
             ctx.fill();
+        }
+
+        const staticCharges = e.staticCharges || 0;
+        const hasStatic = staticCharges > 0;
+        const isStaticStunned = (e.staticStunTimer || 0) > 0;
+        if (!hasStatic && !isStaticStunned) return;
+
+        const r = (e.width ? e.width / 2 : 10) + 8;
+        const pulse = 1 + Math.sin(frameCount * 0.35 + e.x * 0.01) * 0.12;
+
+        if (hasStatic) {
+            ctx.strokeStyle = 'rgba(124, 215, 255, 0.9)';
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([3, 5]);
+            ctx.lineDashOffset = -frameCount * 0.8;
+            ctx.beginPath();
+            ctx.arc(e.x, e.y, r * pulse, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            ctx.fillStyle = '#b8e9ff';
+            ctx.font = 'bold 10px Orbitron';
+            ctx.textAlign = 'center';
+            ctx.fillText(`S:${staticCharges}`, e.x, e.y - r - 7);
+        }
+
+        if (isStaticStunned) {
+            ctx.strokeStyle = '#e6f8ff';
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.arc(e.x, e.y, (r + 4) * pulse, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Electric starburst around stunned target
+            for (let i = 0; i < 6; i++) {
+                const a = (Math.PI * 2 * i / 6) + (frameCount * 0.06);
+                const x1 = e.x + Math.cos(a) * (r + 1);
+                const y1 = e.y + Math.sin(a) * (r + 1);
+                const x2 = e.x + Math.cos(a) * (r + 9 + (i % 2 ? 2 : 0));
+                const y2 = e.y + Math.sin(a) * (r + 9 + (i % 2 ? 2 : 0));
+                ctx.strokeStyle = 'rgba(196, 236, 255, 0.9)';
+                ctx.lineWidth = 1.6;
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.stroke();
+            }
         }
     });
 
@@ -641,8 +690,116 @@ function drawTowerOne(type, x, y, color, scale = 1) {
         ctx.lineTo(x + 15 * s, y);
         ctx.lineTo(x, y + 15 * s);
         ctx.lineTo(x - 15 * s, y);
+    } else if (type === 'arc') {
+        // Hex shell + core for an electric relay look
+        for (let i = 0; i < 6; i++) {
+            const a = (Math.PI * 2 * i / 6) - Math.PI / 2;
+            const px = x + Math.cos(a) * 14 * s;
+            const py = y + Math.sin(a) * 14 * s;
+            if (i === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
     }
     ctx.fill();
+
+    if (type === 'arc') {
+        ctx.fillStyle = '#e9f9ff';
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = '#b8ebff';
+        ctx.beginPath();
+        ctx.arc(x, y, 4 * s, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
+
+function drawArcTowerLinks() {
+    if (!arcTowerLinks || arcTowerLinks.length === 0) return;
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+
+    for (const link of arcTowerLinks) {
+        if (!link || !link.a || !link.b) continue;
+        const intensity = Math.max(1, Math.min(ARC_TOWER_RULES.maxBonus, link.strength || 1));
+        const dashOffset = -(frameCount * (1.6 + intensity * 0.42));
+        const coreWidth = 0.8 + intensity * 0.45;
+
+        // Soft outer glow
+        ctx.strokeStyle = `rgba(124, 215, 255, ${0.16 + intensity * 0.07})`;
+        ctx.lineWidth = coreWidth + 2.2;
+        ctx.beginPath();
+        ctx.moveTo(link.a.x, link.a.y);
+        ctx.lineTo(link.b.x, link.b.y);
+        ctx.stroke();
+
+        // Racing electric dash
+        ctx.strokeStyle = `rgba(214, 244, 255, ${0.35 + intensity * 0.08})`;
+        ctx.lineWidth = coreWidth;
+        ctx.setLineDash([8, Math.max(5, 16 - intensity)]);
+        ctx.lineDashOffset = dashOffset;
+        ctx.beginPath();
+        ctx.moveTo(link.a.x, link.a.y);
+        ctx.lineTo(link.b.x, link.b.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Travel pulse marker
+        const phase = (frameCount * 0.018 + ((link.a.x + link.a.y + link.b.x + link.b.y) * 0.0007)) % 1;
+        const px = link.a.x + (link.b.x - link.a.x) * phase;
+        const py = link.a.y + (link.b.y - link.a.y) * phase;
+        ctx.fillStyle = '#e6f8ff';
+        ctx.shadowBlur = 10 + intensity * 2;
+        ctx.shadowColor = '#9fe3ff';
+        ctx.beginPath();
+        ctx.arc(px, py, 1.5 + intensity * 0.35, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    ctx.restore();
+}
+
+function drawArcLightningBursts() {
+    if (!arcLightningBursts || arcLightningBursts.length === 0) return;
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+
+    for (const burst of arcLightningBursts) {
+        const alpha = Math.max(0, Math.min(1, burst.life / (burst.isChain ? 7 : 8)));
+        const intensity = Math.max(1, Math.min(ARC_TOWER_RULES.maxBonus, burst.intensity || 1));
+        const jitter = 2 + intensity * 0.65;
+
+        const dx = burst.x2 - burst.x1;
+        const dy = burst.y2 - burst.y1;
+        const len = Math.hypot(dx, dy);
+        if (len < 0.001) continue;
+
+        const nx = -dy / len;
+        const ny = dx / len;
+        const points = 5;
+
+        ctx.beginPath();
+        ctx.moveTo(burst.x1, burst.y1);
+        for (let i = 1; i < points; i++) {
+            const t = i / points;
+            const bx = burst.x1 + dx * t;
+            const by = burst.y1 + dy * t;
+            const wave = Math.sin((frameCount * 0.4) + i * 2.5) * jitter;
+            ctx.lineTo(bx + nx * wave, by + ny * wave);
+        }
+        ctx.lineTo(burst.x2, burst.y2);
+
+        ctx.strokeStyle = `rgba(130, 220, 255, ${0.26 * alpha})`;
+        ctx.lineWidth = 3 + intensity * 0.45;
+        ctx.stroke();
+
+        ctx.strokeStyle = `rgba(236, 250, 255, ${0.7 * alpha})`;
+        ctx.lineWidth = 1 + intensity * 0.18;
+        ctx.stroke();
+    }
+
+    ctx.restore();
 }
 
 function drawLevelPips(level, x, y) {
