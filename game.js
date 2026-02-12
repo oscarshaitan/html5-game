@@ -1334,6 +1334,26 @@ function getCoreEntryGapFromPath(path, coreC, coreR, gapSectors, zone0Radius = Z
     return getCoreGapIndexForCell(entryCell.c, entryCell.r, coreC, coreR, gapSectors);
 }
 
+function isCellInsideZone0(c, r, coreC, coreR, zone0Radius = ZONE0_RADIUS_CELLS) {
+    return Math.hypot(c - coreC, r - coreR) < zone0Radius;
+}
+
+function pathRespectsZone0Commitment(points, coreC, coreR, zone0Radius = ZONE0_RADIUS_CELLS, startIndex = 0) {
+    if (!points || !points.length) return true;
+    let enteredZone0 = false;
+    for (let i = Math.max(0, startIndex); i < points.length; i++) {
+        const c = Math.floor(points[i].x / GRID_SIZE);
+        const r = Math.floor(points[i].y / GRID_SIZE);
+        const inside = isCellInsideZone0(c, r, coreC, coreR, zone0Radius);
+        if (inside) {
+            enteredZone0 = true;
+        } else if (enteredZone0) {
+            return false;
+        }
+    }
+    return true;
+}
+
 function calculatePath() {
     paths = [];
 
@@ -1376,7 +1396,17 @@ function calculatePath() {
 
     // Find path while protecting all hardpoint slots (core + micro).
     const hardpointObstacles = hardpoints.map(hp => ({ x: hp.c, y: hp.r }));
-    const pathPoints = findPathOnGrid({ c: startC, r: startR }, endNode, hardpointObstacles);
+    const pathPoints = findPathOnGrid(
+        { c: startC, r: startR },
+        endNode,
+        hardpointObstacles,
+        null,
+        {
+            coreNode: endNode,
+            lockZone0AfterEntry: true,
+            zone0Radius: ZONE0_RADIUS_CELLS
+        }
+    );
 
     if (pathPoints && pathPoints.length > 0) {
         const startDist = Math.hypot(startC - centerC, startR - centerR);
@@ -1385,10 +1415,16 @@ function calculatePath() {
     } else {
         // Fallback manual path if something fails
         console.warn("Failed to generate random path, using fallback");
+        const startX = startC * GRID_SIZE + GRID_SIZE / 2;
+        const startY = startR * GRID_SIZE + GRID_SIZE / 2;
+        const midX = centerC * GRID_SIZE + GRID_SIZE / 2;
+        const endX = centerC * GRID_SIZE + GRID_SIZE / 2;
+        const endY = centerR * GRID_SIZE + GRID_SIZE / 2;
         const fallbackPath = {
             points: [
-                { x: 20, y: 20 },
-                { x: width / 2, y: height / 2 }
+                { x: startX, y: startY },
+                { x: midX, y: startY },
+                { x: endX, y: endY }
             ],
             level: 1,
             zone: 1
@@ -2667,6 +2703,7 @@ function generateNewPath(options = {}) {
 
                 let score = dToSpawn + Math.random() * 0.9;
                 if (preferredGap !== null && pathGap !== preferredGap) score += 4.5;
+                if (!pathRespectsZone0Commitment(path.points, centerC, centerR, ZONE0_RADIUS_CELLS, j)) continue;
                 candidates.push({ c: pc, r: pr, pathIndex: i, pointIndex: j, score });
             }
         }
@@ -2703,7 +2740,12 @@ function generateNewPath(options = {}) {
                 startNode,
                 { c: candidate.c, r: candidate.r },
                 obstacles,
-                localAllowed
+                localAllowed,
+                {
+                    coreNode: endNode,
+                    lockZone0AfterEntry: true,
+                    zone0Radius: ZONE0_RADIUS_CELLS
+                }
             );
             if (!attemptPath) continue;
 
@@ -2761,20 +2803,44 @@ function generateNewPath(options = {}) {
         }
         localAllowed.add(`${endNode.c},${endNode.r}`);
 
-        newPathPoints = findPathOnGrid(startNode, directTarget, obstacles, localAllowed);
+        newPathPoints = findPathOnGrid(
+            startNode,
+            directTarget,
+            obstacles,
+            localAllowed,
+            {
+                coreNode: endNode,
+                lockZone0AfterEntry: true,
+                zone0Radius: ZONE0_RADIUS_CELLS
+            }
+        );
         if (newPathPoints && (directTarget.c !== endNode.c || directTarget.r !== endNode.r)) {
             const last = newPathPoints[newPathPoints.length - 1];
             const lastC = Math.floor(last.x / GRID_SIZE);
             const lastR = Math.floor(last.y / GRID_SIZE);
             if (lastC !== endNode.c || lastR !== endNode.r) {
-                newPathPoints.push({
-                    x: endNode.c * GRID_SIZE + GRID_SIZE / 2,
-                    y: endNode.r * GRID_SIZE + GRID_SIZE / 2
-                });
+                const bridgeAllowed = new Set(localAllowed);
+                bridgeAllowed.add(`${lastC},${lastR}`);
+                const bridgePath = findPathOnGrid(
+                    { c: lastC, r: lastR },
+                    endNode,
+                    obstacles,
+                    bridgeAllowed,
+                    {
+                        coreNode: endNode,
+                        lockZone0AfterEntry: true,
+                        zone0Radius: ZONE0_RADIUS_CELLS
+                    }
+                );
+                if (bridgePath && bridgePath.length > 1) {
+                    newPathPoints.push(...bridgePath.slice(1));
+                } else {
+                    newPathPoints = null;
+                }
             }
         }
 
-        targetNode = directTarget;
+        targetNode = endNode;
         mergePathIndex = -1;
         mergePointIndex = -1;
     }
@@ -2793,6 +2859,16 @@ function generateNewPath(options = {}) {
         const targetPath = paths[mergePathIndex];
         const continuation = targetPath.points.slice(mergePointIndex + 1);
         newPathPoints.push(...continuation);
+    }
+
+    if (!pathRespectsZone0Commitment(newPathPoints, centerC, centerR, ZONE0_RADIUS_CELLS, 0)) {
+        if (relaxedLevel < 2) {
+            return generateNewPath({ ...options, relaxedLevel: relaxedLevel + 1, suppressLogs: true });
+        }
+        if (!suppressLogs) {
+            console.warn("[MISSION FAILED] Zone 0 commitment rule violated (path exited and re-entered).");
+        }
+        return false;
     }
 
     // Safety guard: don't commit paths that overlap themselves.
@@ -2845,7 +2921,7 @@ function generateNewPath(options = {}) {
     return true;
 }
 
-function findPathOnGrid(start, end, obstacles, allowedObstacleKeys = null) {
+function findPathOnGrid(start, end, obstacles, allowedObstacleKeys = null, options = {}) {
     const cols = Math.floor(width / GRID_SIZE);
     const rows = Math.floor(height / GRID_SIZE);
 
@@ -2853,6 +2929,12 @@ function findPathOnGrid(start, end, obstacles, allowedObstacleKeys = null) {
     const endNode = { c: end.c, r: end.r };
     const obstacleSet = new Set((obstacles || []).map(ob => `${ob.x},${ob.y}`));
     const allowedSet = allowedObstacleKeys || new Set();
+    const coreNode = options.coreNode || null;
+    const lockZone0AfterEntry = !!options.lockZone0AfterEntry && !!coreNode;
+    const zone0Radius = Number(options.zone0Radius || ZONE0_RADIUS_CELLS);
+    const startsInsideZone0 = lockZone0AfterEntry
+        ? isCellInsideZone0(startNode.c, startNode.r, coreNode.c, coreNode.r, zone0Radius)
+        : false;
 
     const isInCurrentBranch = (node, c, r) => {
         let cursor = node;
@@ -2868,7 +2950,7 @@ function findPathOnGrid(start, end, obstacles, allowedObstacleKeys = null) {
         c: startNode.c, r: startNode.r, g: 0,
         h: Math.abs(startNode.c - endNode.c) + Math.abs(startNode.r - endNode.r),
         f: Math.abs(startNode.c - endNode.c) + Math.abs(startNode.r - endNode.r),
-        parent: null, dir: null
+        parent: null, dir: null, enteredZone0: startsInsideZone0
     });
 
     const closedSet = new Map();
@@ -2894,7 +2976,7 @@ function findPathOnGrid(start, end, obstacles, allowedObstacleKeys = null) {
             return pathPoints;
         }
 
-        const key = `${current.c},${current.r}`;
+        const key = `${current.c},${current.r},${current.enteredZone0 ? 1 : 0}`;
         closedSet.set(key, current.g);
 
         const neighbors = [
@@ -2912,6 +2994,15 @@ function findPathOnGrid(start, end, obstacles, allowedObstacleKeys = null) {
                 // Prevent branch loops/folding over itself while searching.
                 if (isInCurrentBranch(current, n.c, n.r)) continue;
 
+                const nextInsideZone0 = lockZone0AfterEntry
+                    ? isCellInsideZone0(n.c, n.r, coreNode.c, coreNode.r, zone0Radius)
+                    : false;
+                const nextEnteredZone0 = lockZone0AfterEntry
+                    ? (current.enteredZone0 || nextInsideZone0)
+                    : false;
+                // Once route enters Zone 0, it cannot step back outside.
+                if (lockZone0AfterEntry && current.enteredZone0 && !nextInsideZone0) continue;
+
                 let cost = 1;
                 const isTurning = current.dir && (current.dir.dc !== n.dc || current.dir.dr !== n.dr);
                 if (isTurning) {
@@ -2926,13 +3017,18 @@ function findPathOnGrid(start, end, obstacles, allowedObstacleKeys = null) {
                 cost += getCoreRepulsionPenalty(n.c, n.r, endNode);
 
                 const g = current.g + cost;
-                if (closedSet.has(nKey) && closedSet.get(nKey) <= g) continue;
+                const nStateKey = `${n.c},${n.r},${nextEnteredZone0 ? 1 : 0}`;
+                if (closedSet.has(nStateKey) && closedSet.get(nStateKey) <= g) continue;
 
                 let inOpen = false;
                 for (const node of openSet) {
-                    if (node.c === n.c && node.r === n.r) {
+                    if (node.c === n.c && node.r === n.r && node.enteredZone0 === nextEnteredZone0) {
                         if (node.g > g) {
-                            node.g = g; node.f = g + node.h; node.parent = current; node.dir = { dc: n.dc, dr: n.dr };
+                            node.g = g;
+                            node.f = g + node.h;
+                            node.parent = current;
+                            node.dir = { dc: n.dc, dr: n.dr };
+                            node.enteredZone0 = nextEnteredZone0;
                         }
                         inOpen = true; break;
                     }
@@ -2940,7 +3036,16 @@ function findPathOnGrid(start, end, obstacles, allowedObstacleKeys = null) {
 
                 if (!inOpen) {
                     const h = Math.abs(n.c - endNode.c) + Math.abs(n.r - endNode.r);
-                    openSet.push({ c: n.c, r: n.r, g: g, h: h, f: g + h, parent: current, dir: { dc: n.dc, dr: n.dr } });
+                    openSet.push({
+                        c: n.c,
+                        r: n.r,
+                        g: g,
+                        h: h,
+                        f: g + h,
+                        parent: current,
+                        dir: { dc: n.dc, dr: n.dr },
+                        enteredZone0: nextEnteredZone0
+                    });
                 }
             }
         }
