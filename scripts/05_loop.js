@@ -5,6 +5,14 @@ let nextUISyncFrame = 0;
 let lastBuildAffordMoney = null;
 let lastFrameDtMs = 16.7;
 let towerSelectorNodes = null;
+const AUTO_SAVE_RULES = {
+    minFrameGap: 120,
+    maxDelayFrames: 360
+};
+let autoSavePending = false;
+let autoSaveRequestedAt = 0;
+let lastAutoSaveFrame = -1000000;
+let lastShootSfxFrame = -1000000;
 
 const QUALITY_PROFILES = [
     {
@@ -471,19 +479,32 @@ function getCachedThreatPresence() {
 
 function updateLightSources() {
     const lightLowStride = getQualityProfile().lightLowPriorityStride;
-    for (let i = lightSources.length - 1; i >= 0; i--) {
+    let i = lightSources.length - 1;
+    while (i >= 0) {
         const light = lightSources[i];
+        if (!light) {
+            i--;
+            continue;
+        }
         const priority = Number.isFinite(light.priority) ? light.priority : 1;
         let step = 1;
 
         if (priority <= 0 && lightLowStride > 1) {
             const phase = Number.isFinite(light.phase) ? light.phase : 0;
-            if (((frameCount + phase) % lightLowStride) !== 0) continue;
+            if (((frameCount + phase) % lightLowStride) !== 0) {
+                i--;
+                continue;
+            }
             step = lightLowStride;
         }
 
         light.life -= 0.1 * step;
-        if (light.life <= 0) releaseLightAt(i);
+        if (light.life <= 0) {
+            releaseLightAt(i);
+            continue;
+        }
+
+        i--;
     }
 }
 
@@ -492,6 +513,40 @@ function getTowerSelectorNodes() {
         towerSelectorNodes = Array.from(document.querySelectorAll('.tower-selector'));
     }
     return towerSelectorNodes;
+}
+
+function queueAutoSave() {
+    if (!autoSavePending) {
+        autoSavePending = true;
+        autoSaveRequestedAt = frameCount;
+    }
+}
+
+function flushQueuedAutoSave(force = false) {
+    if (!autoSavePending) return false;
+    if (!force) {
+        const framesSinceLast = frameCount - lastAutoSaveFrame;
+        const framesWaiting = frameCount - autoSaveRequestedAt;
+        const canSaveNow = framesSinceLast >= AUTO_SAVE_RULES.minFrameGap
+            || framesWaiting >= AUTO_SAVE_RULES.maxDelayFrames;
+        if (!canSaveNow) return false;
+    }
+
+    saveGame();
+    lastAutoSaveFrame = frameCount;
+    autoSavePending = false;
+    return true;
+}
+
+function playShootSFX() {
+    const profile = getQualityProfile();
+    let minInterval = 1;
+    if (profile.name === 'BALANCED') minInterval = 2;
+    if (profile.name === 'LOW') minInterval = 3;
+
+    if ((frameCount - lastShootSfxFrame) < minInterval) return;
+    lastShootSfxFrame = frameCount;
+    AudioEngine.playSFX('shoot');
 }
 
 applyQualityProfile(true);
@@ -592,6 +647,7 @@ function update() {
     perfEnd('updateArcEffects', perfUpdateArc);
 
     if (lives <= 0) {
+        flushQueuedAutoSave(true);
         gameState = 'gameover';
         AudioEngine.playSFX('hit');
         document.getElementById('game-over-screen').classList.remove('hidden');
@@ -599,6 +655,7 @@ function update() {
 
     // Update music state based on bosses/mutants
     AudioEngine.updateMusic();
+    flushQueuedAutoSave(false);
     perfEnd('update', perfUpdate);
 }
 
@@ -1119,7 +1176,7 @@ function fireArcTower(tower, target) {
         // Fall back to a basic projectile path while Arc systems are disabled.
         spawnProjectile(tower.x, tower.y, target, 10, tower.damage, tower.color, 'tower');
         addLightSource(tower.x, tower.y, 40, tower.color, 1.0, 1);
-        AudioEngine.playSFX('shoot');
+        playShootSFX();
         return;
     }
 
@@ -1150,7 +1207,7 @@ function fireArcTower(tower, target) {
     }
 
     addLightSource(tower.x, tower.y, 46, tower.color, 1.0, 1);
-    AudioEngine.playSFX('shoot');
+    playShootSFX();
 }
 
 function updateTowers() {
@@ -1239,7 +1296,7 @@ function updateTowers() {
 
             spawnProjectile(baseX, baseY, target, 12, currentDamage, '#00ff41', 'base');
             baseCooldown = currentCooldown;
-            AudioEngine.playSFX('shoot');
+            playShootSFX();
         }
     }
 }
@@ -1253,13 +1310,18 @@ function shoot(tower, target) {
     spawnProjectile(tower.x, tower.y, target, 10, tower.damage, tower.color, 'tower');
     // Muzzle Flash
     addLightSource(tower.x, tower.y, 40, tower.color, 1.0, 1);
-    AudioEngine.playSFX('shoot');
+    playShootSFX();
 }
 
 function updateProjectiles() {
-    for (let i = projectiles.length - 1; i >= 0; i--) {
-        let p = projectiles[i];
-        let t = p.target;
+    let i = projectiles.length - 1;
+    while (i >= 0) {
+        const p = projectiles[i];
+        if (!p) {
+            i--;
+            continue;
+        }
+        const t = p.target;
 
         if (!ENEMY_FRAME_CACHE.aliveSet.has(t)) {
             // Target dead/gone
@@ -1278,6 +1340,7 @@ function updateProjectiles() {
         } else {
             p.x += (dx / dist) * p.speed;
             p.y += (dy / dist) * p.speed;
+            i--;
         }
     }
 }
@@ -1316,7 +1379,7 @@ function hitEnemy(enemy, damage, hitData = null) {
             }
 
             updateUI();
-            saveGame(); // Save on energy gain
+            queueAutoSave(); // Batch combat saves to avoid frame hitches on each kill.
         }
     }
 }
@@ -1348,21 +1411,34 @@ function createParticles(x, y, color, count, options = null) {
 
 function updateParticles() {
     const lowStride = Math.max(1, getQualityProfile().particleLowPriorityStride);
-    for (let i = particles.length - 1; i >= 0; i--) {
-        let p = particles[i];
+    let i = particles.length - 1;
+    while (i >= 0) {
+        const p = particles[i];
+        if (!p) {
+            i--;
+            continue;
+        }
         const priority = Number.isFinite(p.priority) ? p.priority : 1;
         let step = 1;
 
         if (priority <= 0 && lowStride > 1) {
             const phase = Number.isFinite(p.phase) ? p.phase : 0;
-            if (((frameCount + phase) % lowStride) !== 0) continue;
+            if (((frameCount + phase) % lowStride) !== 0) {
+                i--;
+                continue;
+            }
             step = lowStride;
         }
 
         p.x += p.vx * step;
         p.y += p.vy * step;
         p.life -= 0.05 * step;
-        if (p.life <= 0) releaseParticleAt(i);
+        if (p.life <= 0) {
+            releaseParticleAt(i);
+            continue;
+        }
+
+        i--;
     }
 }
 
