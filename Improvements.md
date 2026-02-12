@@ -32,6 +32,14 @@ Scales:
 - [x] C1-3 UI throttling + update-on-change writes
 - [x] C1-4 Expensive text gating to needed context
 
+## Complexity 2 Scope
+
+- [x] C2-5 Cap particles/lights/bursts per frame with priority
+- [x] C2-6 Object pooling for particles/projectiles/lights
+- [x] C2-7 Dynamic quality governor based on frame-time
+- [x] C2-8 Stagger low-priority visual updates across frames
+- [x] C2-9 Replace repeated scans with cached sets/lists
+
 ## Suggested Implementation Phases
 
 1. Phase A: Complexity 1 (`1-4`)
@@ -45,3 +53,6 @@ Scales:
 - 99th percentile frame-time improved by >= `30%` from pre-optimization baseline
 - Gameplay parity preserved (no simulation drift from render culling/throttling)
 
+
+## EXTRA CONCERNS
+after shoot the game gets junk framkes

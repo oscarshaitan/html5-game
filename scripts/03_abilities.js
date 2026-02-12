@@ -48,7 +48,7 @@ function useAbility(type, target) {
                 e.frozenTimer = ability.duration;
             }
         });
-        lightSources.push({ x: target.x, y: target.y, radius: 250, color: '#00f3ff', life: 2.0 });
+        addLightSource(target.x, target.y, 250, '#00f3ff', 2.0, 2);
     } else if (type === 'overclock') {
         // Overclock a specific tower
         createParticles(target.x, target.y, '#fcee0a', 15);

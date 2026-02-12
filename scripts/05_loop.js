@@ -3,6 +3,173 @@ let updateParticleBudgetUsed = false;
 const UI_SYNC_INTERVAL_FRAMES = 6;
 let nextUISyncFrame = 0;
 let lastBuildAffordMoney = null;
+let lastFrameDtMs = 16.7;
+let towerSelectorNodes = null;
+
+const QUALITY_PROFILES = [
+    {
+        name: 'HIGH',
+        maxParticles: 900,
+        particleSpawnBudget: 120,
+        particleBurstOverdraft: 22,
+        particleLowPriorityStride: 1,
+        maxLights: 140,
+        lightSpawnBudget: 18,
+        lightBurstOverdraft: 6,
+        lightLowPriorityStride: 1,
+        maxArcBursts: 180,
+        arcBurstSpawnBudget: 34,
+        arcBurstOverdraft: 8,
+        chainBurstUpdateStride: 1,
+        forceLowAnimation: false
+    },
+    {
+        name: 'BALANCED',
+        maxParticles: 620,
+        particleSpawnBudget: 90,
+        particleBurstOverdraft: 14,
+        particleLowPriorityStride: 2,
+        maxLights: 90,
+        lightSpawnBudget: 14,
+        lightBurstOverdraft: 4,
+        lightLowPriorityStride: 2,
+        maxArcBursts: 140,
+        arcBurstSpawnBudget: 22,
+        arcBurstOverdraft: 6,
+        chainBurstUpdateStride: 2,
+        forceLowAnimation: true
+    },
+    {
+        name: 'LOW',
+        maxParticles: 420,
+        particleSpawnBudget: 58,
+        particleBurstOverdraft: 10,
+        particleLowPriorityStride: 3,
+        maxLights: 65,
+        lightSpawnBudget: 9,
+        lightBurstOverdraft: 3,
+        lightLowPriorityStride: 3,
+        maxArcBursts: 96,
+        arcBurstSpawnBudget: 14,
+        arcBurstOverdraft: 4,
+        chainBurstUpdateStride: 3,
+        forceLowAnimation: true
+    }
+];
+
+const QUALITY_GOVERNOR = {
+    profileIndex: PERFORMANCE_RULES.enabled ? 1 : 0,
+    appliedIndex: -1,
+    appliedPerformanceMode: PERFORMANCE_RULES.enabled,
+    emaFrameMs: 16.7,
+    downgradeFrameMs: 22,
+    downgradeEmaMs: 19.5,
+    upgradeFrameMs: 15.8,
+    upgradeEmaMs: 15.3,
+    downgradeFramesRequired: 45,
+    upgradeFramesRequired: 240,
+    downgradeCount: 0,
+    upgradeCount: 0
+};
+
+const EFFECT_POOLS = {
+    particles: [],
+    projectiles: [],
+    lights: []
+};
+
+const EFFECT_POOL_LIMITS = {
+    particles: 2200,
+    projectiles: 900,
+    lights: 260
+};
+
+const EFFECT_BUDGET = {
+    frame: -1,
+    particles: 0,
+    lights: 0,
+    bursts: 0
+};
+
+const ENEMY_FRAME_CACHE = {
+    targetable: [],
+    taunters: [],
+    aliveSet: new Set(),
+    hasThreat: false
+};
+
+function getMinimumQualityProfileIndex() {
+    return PERFORMANCE_RULES.enabled ? 1 : 0;
+}
+
+function getQualityProfile() {
+    const i = Math.max(0, Math.min(QUALITY_PROFILES.length - 1, QUALITY_GOVERNOR.profileIndex));
+    return QUALITY_PROFILES[i];
+}
+
+function applyQualityProfile(force = false) {
+    const minIdx = getMinimumQualityProfileIndex();
+    if (QUALITY_GOVERNOR.profileIndex < minIdx) {
+        QUALITY_GOVERNOR.profileIndex = minIdx;
+    }
+
+    const profile = getQualityProfile();
+    const shouldUseLowAnimation = PERFORMANCE_RULES.enabled || profile.forceLowAnimation;
+    const unchanged = !force
+        && QUALITY_GOVERNOR.appliedIndex === QUALITY_GOVERNOR.profileIndex
+        && QUALITY_GOVERNOR.appliedPerformanceMode === PERFORMANCE_RULES.enabled
+        && ARC_TOWER_RULES.lowAnimationMode === shouldUseLowAnimation;
+    if (unchanged) return;
+
+    QUALITY_GOVERNOR.appliedIndex = QUALITY_GOVERNOR.profileIndex;
+    QUALITY_GOVERNOR.appliedPerformanceMode = PERFORMANCE_RULES.enabled;
+    ARC_TOWER_RULES.lowAnimationMode = shouldUseLowAnimation;
+}
+
+window.refreshQualitySettings = function () {
+    QUALITY_GOVERNOR.profileIndex = getMinimumQualityProfileIndex();
+    QUALITY_GOVERNOR.downgradeCount = 0;
+    QUALITY_GOVERNOR.upgradeCount = 0;
+    applyQualityProfile(true);
+};
+
+function updateQualityGovernor(frameDtMs) {
+    applyQualityProfile();
+    if (!Number.isFinite(frameDtMs) || frameDtMs <= 0) return;
+
+    const alpha = 0.1;
+    QUALITY_GOVERNOR.emaFrameMs = (QUALITY_GOVERNOR.emaFrameMs * (1 - alpha)) + (frameDtMs * alpha);
+
+    const stressed = frameDtMs > QUALITY_GOVERNOR.downgradeFrameMs
+        || QUALITY_GOVERNOR.emaFrameMs > QUALITY_GOVERNOR.downgradeEmaMs;
+    const stable = frameDtMs < QUALITY_GOVERNOR.upgradeFrameMs
+        && QUALITY_GOVERNOR.emaFrameMs < QUALITY_GOVERNOR.upgradeEmaMs;
+
+    QUALITY_GOVERNOR.downgradeCount = stressed ? (QUALITY_GOVERNOR.downgradeCount + 1) : 0;
+    QUALITY_GOVERNOR.upgradeCount = stable ? (QUALITY_GOVERNOR.upgradeCount + 1) : 0;
+
+    let changed = false;
+    if (QUALITY_GOVERNOR.downgradeCount >= QUALITY_GOVERNOR.downgradeFramesRequired
+        && QUALITY_GOVERNOR.profileIndex < (QUALITY_PROFILES.length - 1)) {
+        QUALITY_GOVERNOR.profileIndex++;
+        QUALITY_GOVERNOR.downgradeCount = 0;
+        QUALITY_GOVERNOR.upgradeCount = 0;
+        changed = true;
+    } else if (QUALITY_GOVERNOR.upgradeCount >= QUALITY_GOVERNOR.upgradeFramesRequired
+        && QUALITY_GOVERNOR.profileIndex > getMinimumQualityProfileIndex()) {
+        QUALITY_GOVERNOR.profileIndex--;
+        QUALITY_GOVERNOR.downgradeCount = 0;
+        QUALITY_GOVERNOR.upgradeCount = 0;
+        changed = true;
+    }
+
+    if (changed) {
+        applyQualityProfile(true);
+        if (PERF_MONITOR.enabled) {
+            console.log(`[QUALITY] ${getQualityProfile().name} | dt=${frameDtMs.toFixed(2)}ms ema=${QUALITY_GOVERNOR.emaFrameMs.toFixed(2)}ms`);
+        }
+    }
+}
 
 const PERF_MONITOR = {
     enabled: localStorage.getItem('neonDefensePerfMonitor') === 'on',
@@ -13,6 +180,7 @@ const PERF_MONITOR = {
         updateTowers: 2.5,
         updateProjectiles: 1.6,
         updateParticles: 1.2,
+        updateLights: 0.9,
         updateArcEffects: 0.8,
         updateUI: 1.4,
         draw: 8.0,
@@ -76,18 +244,275 @@ function perfMaybeReport() {
     PERF_MONITOR.samples = Object.create(null);
 }
 
+function ensureEffectBudgetFrame() {
+    if (EFFECT_BUDGET.frame === frameCount) return;
+    EFFECT_BUDGET.frame = frameCount;
+    EFFECT_BUDGET.particles = 0;
+    EFFECT_BUDGET.lights = 0;
+    EFFECT_BUDGET.bursts = 0;
+}
+
+function canSpawnParticle(priority) {
+    ensureEffectBudgetFrame();
+    const profile = getQualityProfile();
+    const budget = profile.particleSpawnBudget;
+    if (EFFECT_BUDGET.particles >= budget) {
+        const hardCap = budget + profile.particleBurstOverdraft;
+        if (priority < 2 || EFFECT_BUDGET.particles >= hardCap) return false;
+    }
+    EFFECT_BUDGET.particles++;
+    return true;
+}
+
+function canSpawnLight(priority) {
+    ensureEffectBudgetFrame();
+    const profile = getQualityProfile();
+    const budget = profile.lightSpawnBudget;
+    if (EFFECT_BUDGET.lights >= budget) {
+        const hardCap = budget + profile.lightBurstOverdraft;
+        if (priority < 2 || EFFECT_BUDGET.lights >= hardCap) return false;
+    }
+    EFFECT_BUDGET.lights++;
+    return true;
+}
+
+function canSpawnArcBurst(priority) {
+    ensureEffectBudgetFrame();
+    const profile = getQualityProfile();
+    const budget = profile.arcBurstSpawnBudget;
+    if (EFFECT_BUDGET.bursts >= budget) {
+        const hardCap = budget + profile.arcBurstOverdraft;
+        if (priority < 2 || EFFECT_BUDGET.bursts >= hardCap) return false;
+    }
+    EFFECT_BUDGET.bursts++;
+    return true;
+}
+
+function removeAtSwap(arr, index) {
+    if (index < 0 || index >= arr.length) return null;
+    const removed = arr[index];
+    const last = arr.pop();
+    if (index < arr.length) arr[index] = last;
+    return removed;
+}
+
+function releaseParticleAt(index) {
+    const p = removeAtSwap(particles, index);
+    if (!p) return;
+    p.x = 0;
+    p.y = 0;
+    p.vx = 0;
+    p.vy = 0;
+    p.life = 0;
+    p.color = '';
+    p.priority = 0;
+    p.phase = 0;
+    if (EFFECT_POOLS.particles.length < EFFECT_POOL_LIMITS.particles) EFFECT_POOLS.particles.push(p);
+}
+
+function releaseProjectileAt(index) {
+    const p = removeAtSwap(projectiles, index);
+    if (!p) return;
+    p.x = 0;
+    p.y = 0;
+    p.target = null;
+    p.speed = 0;
+    p.damage = 0;
+    p.color = '';
+    p.type = '';
+    if (EFFECT_POOLS.projectiles.length < EFFECT_POOL_LIMITS.projectiles) EFFECT_POOLS.projectiles.push(p);
+}
+
+function releaseLightAt(index) {
+    const light = removeAtSwap(lightSources, index);
+    if (!light) return;
+    light.x = 0;
+    light.y = 0;
+    light.radius = 0;
+    light.color = '';
+    light.life = 0;
+    light.priority = 0;
+    light.phase = 0;
+    if (EFFECT_POOLS.lights.length < EFFECT_POOL_LIMITS.lights) EFFECT_POOLS.lights.push(light);
+}
+
+function reserveParticleSlot(priority) {
+    const maxParticles = getQualityProfile().maxParticles;
+    if (particles.length < maxParticles) return true;
+    if (priority <= 0) return false;
+
+    let victim = -1;
+    let victimPriority = Infinity;
+    let victimLife = Infinity;
+    for (let i = 0; i < particles.length; i++) {
+        const p = particles[i];
+        const pPriority = Number.isFinite(p.priority) ? p.priority : 1;
+        if (pPriority >= priority) continue;
+        const pLife = Number.isFinite(p.life) ? p.life : 1;
+        if (pPriority < victimPriority || (pPriority === victimPriority && pLife < victimLife)) {
+            victim = i;
+            victimPriority = pPriority;
+            victimLife = pLife;
+        }
+    }
+
+    if (victim < 0) return false;
+    releaseParticleAt(victim);
+    return true;
+}
+
+function reserveLightSlot(priority) {
+    const maxLights = getQualityProfile().maxLights;
+    if (lightSources.length < maxLights) return true;
+    if (priority <= 0) return false;
+
+    let victim = -1;
+    let victimPriority = Infinity;
+    let victimLife = Infinity;
+    for (let i = 0; i < lightSources.length; i++) {
+        const light = lightSources[i];
+        const lPriority = Number.isFinite(light.priority) ? light.priority : 1;
+        if (lPriority >= priority) continue;
+        const lLife = Number.isFinite(light.life) ? light.life : 0;
+        if (lPriority < victimPriority || (lPriority === victimPriority && lLife < victimLife)) {
+            victim = i;
+            victimPriority = lPriority;
+            victimLife = lLife;
+        }
+    }
+
+    if (victim < 0) return false;
+    releaseLightAt(victim);
+    return true;
+}
+
+function reserveArcBurstSlot(priority) {
+    const profile = getQualityProfile();
+    const cap = Math.min(ARC_TOWER_RULES.maxLightningBursts, profile.maxArcBursts);
+    if (arcLightningBursts.length < cap) return true;
+
+    for (let i = 0; i < arcLightningBursts.length; i++) {
+        const burst = arcLightningBursts[i];
+        const burstPriority = Number.isFinite(burst.priority) ? burst.priority : (burst.isChain ? 0 : 2);
+        if (burstPriority >= priority) continue;
+        arcLightningBursts.splice(i, 1);
+        return true;
+    }
+
+    if (priority >= 2 && arcLightningBursts.length > 0) {
+        arcLightningBursts.shift();
+        return true;
+    }
+    return false;
+}
+
+function spawnProjectile(x, y, target, speed, damage, color, type = 'tower') {
+    const p = EFFECT_POOLS.projectiles.pop() || {};
+    p.x = x;
+    p.y = y;
+    p.target = target;
+    p.speed = speed;
+    p.damage = damage;
+    p.color = color;
+    p.type = type;
+    projectiles.push(p);
+    return p;
+}
+
+function addLightSource(x, y, radius, color, life = 1, priority = 1) {
+    if (!canSpawnLight(priority)) return false;
+    if (!reserveLightSlot(priority)) return false;
+
+    const light = EFFECT_POOLS.lights.pop() || {};
+    light.x = x;
+    light.y = y;
+    light.radius = radius;
+    light.color = color;
+    light.life = life;
+    light.priority = priority;
+    light.phase = Math.floor(Math.random() * 3);
+    lightSources.push(light);
+    return true;
+}
+
+function refreshThreatPresenceFromAliveSet() {
+    ENEMY_FRAME_CACHE.hasThreat = false;
+    for (const e of ENEMY_FRAME_CACHE.aliveSet) {
+        if (!e) continue;
+        if (e.type === 'boss' || e.isMutant) {
+            ENEMY_FRAME_CACHE.hasThreat = true;
+            return;
+        }
+    }
+}
+
+function rebuildEnemyFrameCache() {
+    const targetable = ENEMY_FRAME_CACHE.targetable;
+    const taunters = ENEMY_FRAME_CACHE.taunters;
+    targetable.length = 0;
+    taunters.length = 0;
+    ENEMY_FRAME_CACHE.aliveSet.clear();
+    ENEMY_FRAME_CACHE.hasThreat = false;
+
+    for (const enemy of enemies) {
+        if (!enemy || enemy.hp <= 0) continue;
+        ENEMY_FRAME_CACHE.aliveSet.add(enemy);
+        if (enemy.type === 'boss' || enemy.isMutant) ENEMY_FRAME_CACHE.hasThreat = true;
+        if (enemy.isInvisible) continue;
+
+        targetable.push(enemy);
+        if (enemy.type === 'bulwark') taunters.push(enemy);
+    }
+}
+
+function getCachedThreatPresence() {
+    return ENEMY_FRAME_CACHE.hasThreat;
+}
+
+function updateLightSources() {
+    const lightLowStride = getQualityProfile().lightLowPriorityStride;
+    for (let i = lightSources.length - 1; i >= 0; i--) {
+        const light = lightSources[i];
+        const priority = Number.isFinite(light.priority) ? light.priority : 1;
+        let step = 1;
+
+        if (priority <= 0 && lightLowStride > 1) {
+            const phase = Number.isFinite(light.phase) ? light.phase : 0;
+            if (((frameCount + phase) % lightLowStride) !== 0) continue;
+            step = lightLowStride;
+        }
+
+        light.life -= 0.1 * step;
+        if (light.life <= 0) releaseLightAt(i);
+    }
+}
+
+function getTowerSelectorNodes() {
+    if (!towerSelectorNodes || towerSelectorNodes.length === 0) {
+        towerSelectorNodes = Array.from(document.querySelectorAll('.tower-selector'));
+    }
+    return towerSelectorNodes;
+}
+
+applyQualityProfile(true);
+
 function emitUpdateParticleOnce(x, y, color, count = 1) {
     if (updateParticleBudgetUsed) return;
     updateParticleBudgetUsed = true;
-    createParticles(x, y, color, count);
+    createParticles(x, y, color, count, { priority: 0 });
 }
 
 function gameLoop(timestamp) {
-    const dt = timestamp - lastTime; // could be used for delta time
+    if (!lastTime) lastTime = timestamp;
+    const dt = Math.max(0, timestamp - lastTime); // could be used for delta time
     lastTime = timestamp;
+    if (dt > 0) lastFrameDtMs = dt;
 
     if (gameState === 'playing' && !isPaused) {
-        update(dt);
+        updateQualityGovernor(lastFrameDtMs);
+        update();
+    } else {
+        applyQualityProfile();
     }
     positionSelectionPanel();
     draw();
@@ -158,6 +583,10 @@ function update() {
     updateParticles();
     perfEnd('updateParticles', perfUpdateParticles);
 
+    const perfUpdateLights = perfBegin('updateLights');
+    updateLightSources();
+    perfEnd('updateLights', perfUpdateLights);
+
     const perfUpdateArc = perfBegin('updateArcEffects');
     updateArcEffects();
     perfEnd('updateArcEffects', perfUpdateArc);
@@ -166,12 +595,6 @@ function update() {
         gameState = 'gameover';
         AudioEngine.playSFX('hit');
         document.getElementById('game-over-screen').classList.remove('hidden');
-    }
-
-    // Update light sources
-    for (let i = lightSources.length - 1; i >= 0; i--) {
-        lightSources[i].life -= 0.1;
-        if (lightSources[i].life <= 0) lightSources.splice(i, 1);
     }
 
     // Update music state based on bosses/mutants
@@ -237,9 +660,7 @@ function spawnEnemy() {
         type: enemyType // Store the type for drawing/logic
     };
 
-    if (enemyType === 'boss') {
-        lightSources.push({ x: e.x, y: e.y, radius: 150, color: '#ff8800', life: 2.0 });
-    }
+    if (enemyType === 'boss') addLightSource(e.x, e.y, 150, '#ff8800', 2.0, 2);
 
     enemies.push(e);
 }
@@ -345,7 +766,7 @@ window.debugLevelUpRift = function () {
     if (rift.points.length > 0) {
         const start = rift.points[0];
         createParticles(start.x, start.y, '#ff00ac', 30);
-        lightSources.push({ x: start.x, y: start.y, radius: 200, color: '#ff00ac', life: 1.0 });
+        addLightSource(start.x, start.y, 200, '#ff00ac', 1.0, 1);
     }
 
     AudioEngine.playSFX('build');
@@ -460,9 +881,11 @@ window.debugRebuildRiftsByWave = function () {
 };
 
 function updateEnemies() {
+    const qualityProfile = getQualityProfile();
+    const lowPriorityStride = Math.max(1, qualityProfile.particleLowPriorityStride);
     const arcCalcEnabled = !ARC_TOWER_RULES.disableCalculationsForPerfTest;
-    const frozenTrailInterval = PERFORMANCE_RULES.enabled ? 30 : 16;
-    const bulwarkPulseInterval = PERFORMANCE_RULES.enabled ? 54 : 40;
+    const frozenTrailInterval = (PERFORMANCE_RULES.enabled ? 30 : 16) * lowPriorityStride;
+    const bulwarkPulseInterval = (PERFORMANCE_RULES.enabled ? 54 : 40) * lowPriorityStride;
     const bulwarkPulseCount = PERFORMANCE_RULES.enabled ? 1 : 1;
     let staticStatusCount = 0;
 
@@ -538,6 +961,7 @@ function updateEnemies() {
     }
 
     activeStaticStatusCount = arcCalcEnabled ? staticStatusCount : 0;
+    rebuildEnemyFrameCache();
 }
 
 function updateArcEffects() {
@@ -546,9 +970,19 @@ function updateArcEffects() {
         return;
     }
 
+    const chainStride = Math.max(1, getQualityProfile().chainBurstUpdateStride);
     for (let i = arcLightningBursts.length - 1; i >= 0; i--) {
-        arcLightningBursts[i].life--;
-        if (arcLightningBursts[i].life <= 0) arcLightningBursts.splice(i, 1);
+        const burst = arcLightningBursts[i];
+        let step = 1;
+
+        if (burst.isChain && chainStride > 1) {
+            const phase = Number.isFinite(burst.phase) ? burst.phase : 0;
+            if (((frameCount + phase) % chainStride) !== 0) continue;
+            step = chainStride;
+        }
+
+        burst.life -= step;
+        if (burst.life <= 0) arcLightningBursts.splice(i, 1);
     }
 }
 
@@ -631,12 +1065,9 @@ function refreshArcTowerNetwork() {
 
 function addArcLightningBurst(x1, y1, x2, y2, intensity = 1, isChain = false) {
     if (ARC_TOWER_RULES.disableCalculationsForPerfTest) return;
-
-    if (arcLightningBursts.length >= ARC_TOWER_RULES.maxLightningBursts) {
-        // Drop the oldest burst to keep VFX bounded under heavy chain spam.
-        arcLightningBursts.shift();
-    }
-
+    const priority = isChain ? 0 : 2;
+    if (!canSpawnArcBurst(priority)) return;
+    if (!reserveArcBurstSlot(priority)) return;
     arcLightningBursts.push({
         x1,
         y1,
@@ -644,7 +1075,9 @@ function addArcLightningBurst(x1, y1, x2, y2, intensity = 1, isChain = false) {
         y2,
         intensity: Math.max(1, Math.min(ARC_TOWER_RULES.maxBonus, intensity || 1)),
         isChain: !!isChain,
-        life: isChain ? 7 : 8
+        life: isChain ? 7 : 8,
+        priority: priority,
+        phase: Math.floor(Math.random() * 3)
     });
 }
 
@@ -662,14 +1095,15 @@ function applyStaticCharges(enemy, amount) {
         enemy.staticCharges -= ARC_TOWER_RULES.staticThreshold;
         enemy.staticStunTimer = Math.max(enemy.staticStunTimer || 0, ARC_TOWER_RULES.stunFrames);
         createParticles(enemy.x, enemy.y, '#b7eaff', PERFORMANCE_RULES.enabled ? PERFORMANCE_RULES.staticStunParticleCount : 5);
-        lightSources.push({ x: enemy.x, y: enemy.y, radius: 70, color: '#7cd7ff', life: 1.0 });
+        addLightSource(enemy.x, enemy.y, 70, '#7cd7ff', 1.0, 1);
     }
 }
 
 function findArcBounceTarget(fromX, fromY, visited) {
     let target = null;
     let minDist = Infinity;
-    for (const enemy of enemies) {
+    const candidates = ENEMY_FRAME_CACHE.targetable;
+    for (const enemy of candidates) {
         if (!enemy || enemy.hp <= 0 || enemy.isInvisible || visited.has(enemy)) continue;
         const dist = Math.hypot(enemy.x - fromX, enemy.y - fromY);
         if (dist <= ARC_TOWER_RULES.chainRange && dist < minDist) {
@@ -683,15 +1117,8 @@ function findArcBounceTarget(fromX, fromY, visited) {
 function fireArcTower(tower, target) {
     if (ARC_TOWER_RULES.disableCalculationsForPerfTest) {
         // Fall back to a basic projectile path while Arc systems are disabled.
-        projectiles.push({
-            x: tower.x,
-            y: tower.y,
-            target: target,
-            speed: 10,
-            damage: tower.damage,
-            color: tower.color
-        });
-        lightSources.push({ x: tower.x, y: tower.y, radius: 40, color: tower.color, life: 1.0 });
+        spawnProjectile(tower.x, tower.y, target, 10, tower.damage, tower.color, 'tower');
+        addLightSource(tower.x, tower.y, 40, tower.color, 1.0, 1);
         AudioEngine.playSFX('shoot');
         return;
     }
@@ -722,12 +1149,14 @@ function fireArcTower(tower, target) {
         fromY = bounceTarget.y;
     }
 
-    lightSources.push({ x: tower.x, y: tower.y, radius: 46, color: tower.color, life: 1.0 });
+    addLightSource(tower.x, tower.y, 46, tower.color, 1.0, 1);
     AudioEngine.playSFX('shoot');
 }
 
 function updateTowers() {
     const overclockTrailInterval = PERFORMANCE_RULES.enabled ? 24 : 14;
+    const targetableEnemies = ENEMY_FRAME_CACHE.targetable;
+    const taunterEnemies = ENEMY_FRAME_CACHE.taunters;
 
     refreshArcTowerNetwork();
 
@@ -750,19 +1179,20 @@ function updateTowers() {
         let minDist = Infinity;
 
         // Taunt Check first
-        const taunters = enemies.filter(e => e.type === 'bulwark' && !e.isInvisible && Math.hypot(e.x - t.x, e.y - t.y) <= range);
-        if (taunters.length > 0) {
-            // Pick closest taunter
-            taunters.forEach(e => {
-                const dist = Math.hypot(e.x - t.x, e.y - t.y);
+        let taunterInRange = false;
+        for (const e of taunterEnemies) {
+            const dist = Math.hypot(e.x - t.x, e.y - t.y);
+            if (dist <= range) {
+                taunterInRange = true;
                 if (dist < minDist) {
                     target = e;
                     minDist = dist;
                 }
-            });
-        } else {
-            for (let e of enemies) {
-                if (e.isInvisible) continue; // Ignore stealth units
+            }
+        }
+
+        if (!taunterInRange) {
+            for (const e of targetableEnemies) {
                 const dist = Math.hypot(e.x - t.x, e.y - t.y);
                 if (dist <= range && dist < minDist) {
                     target = e;
@@ -792,7 +1222,7 @@ function updateTowers() {
         // Base range increases with level: 150, 180, 210
         const currentBaseRange = baseRange + (baseLevel - 1) * 30;
 
-        for (let e of enemies) {
+        for (const e of ENEMY_FRAME_CACHE.aliveSet) {
             const dist = Math.hypot(e.x - baseX, e.y - baseY);
             if (dist <= currentBaseRange && dist < minDist) {
                 target = e;
@@ -807,15 +1237,7 @@ function updateTowers() {
             // Cooldown decreases: floor at 8 (approx 7.5 shots/sec)
             const currentCooldown = Math.max(8, 35 - baseLevel * 5);
 
-            projectiles.push({
-                x: baseX,
-                y: baseY,
-                target: target,
-                speed: 12,
-                damage: currentDamage,
-                color: '#00ff41',
-                type: 'base' // Special projectile
-            });
+            spawnProjectile(baseX, baseY, target, 12, currentDamage, '#00ff41', 'base');
             baseCooldown = currentCooldown;
             AudioEngine.playSFX('shoot');
         }
@@ -828,16 +1250,9 @@ function shoot(tower, target) {
         return;
     }
 
-    projectiles.push({
-        x: tower.x,
-        y: tower.y,
-        target: target,
-        speed: 10,
-        damage: tower.damage,
-        color: tower.color
-    });
+    spawnProjectile(tower.x, tower.y, target, 10, tower.damage, tower.color, 'tower');
     // Muzzle Flash
-    lightSources.push({ x: tower.x, y: tower.y, radius: 40, color: tower.color, life: 1.0 });
+    addLightSource(tower.x, tower.y, 40, tower.color, 1.0, 1);
     AudioEngine.playSFX('shoot');
 }
 
@@ -846,9 +1261,9 @@ function updateProjectiles() {
         let p = projectiles[i];
         let t = p.target;
 
-        if (!enemies.includes(t)) {
+        if (!ENEMY_FRAME_CACHE.aliveSet.has(t)) {
             // Target dead/gone
-            projectiles.splice(i, 1);
+            releaseProjectileAt(i);
             continue;
         }
 
@@ -859,7 +1274,7 @@ function updateProjectiles() {
         if (dist < p.speed) {
             // Hit
             hitEnemy(t, p.damage, null);
-            projectiles.splice(i, 1);
+            releaseProjectileAt(i);
         } else {
             p.x += (dx / dist) * p.speed;
             p.y += (dy / dist) * p.speed;
@@ -878,6 +1293,8 @@ function hitEnemy(enemy, damage, hitData = null) {
         const index = enemies.indexOf(enemy);
         if (index > -1) {
             enemies.splice(index, 1);
+            ENEMY_FRAME_CACHE.aliveSet.delete(enemy);
+            if (enemy.type === 'boss' || enemy.isMutant) refreshThreatPresenceFromAliveSet();
             money += enemy.reward;
 
             // Track Lifetime Kills
@@ -888,8 +1305,8 @@ function hitEnemy(enemy, damage, hitData = null) {
             // Gain Energy
             energy = Math.min(maxEnergy, energy + 1);
 
-            createParticles(enemy.x, enemy.y, enemy.color, 4);
-            lightSources.push({ x: enemy.x, y: enemy.y, radius: 60, color: enemy.color, life: 1.0 });
+            createParticles(enemy.x, enemy.y, enemy.color, 4, { priority: 2 });
+            addLightSource(enemy.x, enemy.y, 60, enemy.color, 1.0, 1);
 
             AudioEngine.playSFX('explosion');
 
@@ -904,26 +1321,48 @@ function hitEnemy(enemy, damage, hitData = null) {
     }
 }
 
-function createParticles(x, y, color, count) {
-    for (let i = 0; i < count; i++) {
-        particles.push({
-            x: x,
-            y: y,
-            vx: (Math.random() - 0.5) * 5,
-            vy: (Math.random() - 0.5) * 5,
-            life: 1.0,
-            color: color
-        });
+function createParticles(x, y, color, count, options = null) {
+    const opts = options || {};
+    const priority = Number.isFinite(opts.priority) ? opts.priority : 1;
+    const baseSpeed = Number.isFinite(opts.speed) ? Math.max(0.2, opts.speed) : 5;
+    const baseLife = Number.isFinite(opts.life) ? Math.max(0.05, opts.life) : 1.0;
+    const spread = Number.isFinite(opts.spread) ? Math.max(0.2, opts.spread) : 1.0;
+    const total = Math.max(0, Math.floor(count || 0));
+
+    for (let i = 0; i < total; i++) {
+        if (!canSpawnParticle(priority)) break;
+        if (!reserveParticleSlot(priority)) break;
+
+        const p = EFFECT_POOLS.particles.pop() || {};
+        p.x = x;
+        p.y = y;
+        p.vx = (Math.random() - 0.5) * baseSpeed * spread;
+        p.vy = (Math.random() - 0.5) * baseSpeed * spread;
+        p.life = baseLife;
+        p.color = color;
+        p.priority = priority;
+        p.phase = Math.floor(Math.random() * 3);
+        particles.push(p);
     }
 }
 
 function updateParticles() {
+    const lowStride = Math.max(1, getQualityProfile().particleLowPriorityStride);
     for (let i = particles.length - 1; i >= 0; i--) {
         let p = particles[i];
-        p.x += p.vx;
-        p.y += p.vy;
-        p.life -= 0.05;
-        if (p.life <= 0) particles.splice(i, 1);
+        const priority = Number.isFinite(p.priority) ? p.priority : 1;
+        let step = 1;
+
+        if (priority <= 0 && lowStride > 1) {
+            const phase = Number.isFinite(p.phase) ? p.phase : 0;
+            if (((frameCount + phase) % lowStride) !== 0) continue;
+            step = lowStride;
+        }
+
+        p.x += p.vx * step;
+        p.y += p.vy * step;
+        p.life -= 0.05 * step;
+        if (p.life <= 0) releaseParticleAt(i);
     }
 }
 
@@ -1017,7 +1456,7 @@ function updateUI(force = false) {
     // Build Panel: Disable unaffordable towers
     if (lastBuildAffordMoney !== money || force) {
         lastBuildAffordMoney = money;
-        document.querySelectorAll('.tower-selector').forEach(el => {
+        getTowerSelectorNodes().forEach(el => {
             const type = el.getAttribute('data-type');
             const cost = TOWERS[type].cost;
             const disabled = money < cost;

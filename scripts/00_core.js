@@ -87,6 +87,7 @@ window.togglePerformanceMode = function () {
     PERFORMANCE_RULES.enabled = !PERFORMANCE_RULES.enabled;
     ARC_TOWER_RULES.lowAnimationMode = PERFORMANCE_RULES.enabled;
     localStorage.setItem(PERFORMANCE_MODE_KEY, PERFORMANCE_RULES.enabled ? 'on' : 'off');
+    if (typeof refreshQualitySettings === 'function') refreshQualitySettings();
     updatePerformanceUI();
 };
 
@@ -549,7 +550,9 @@ const AudioEngine = {
         if (!this.ctx) return;
         if (this.ctx.state === 'suspended') this.ctx.resume();
 
-        const hasThreat = enemies.some(e => e.type === 'boss' || e.isMutant);
+        const hasThreat = (typeof getCachedThreatPresence === 'function')
+            ? getCachedThreatPresence()
+            : enemies.some(e => e.type === 'boss' || e.isMutant);
         const targetType = hasThreat ? 'threat' : 'normal';
 
         // Calculate which normal melody to use based on wave
