@@ -627,6 +627,7 @@ function generateNewPath(options = {}) {
             money += Math.floor((t.cost * t.level) * 0.7);
             createParticles(t.x, t.y, '#fff', 10);
             towers.splice(i, 1);
+            markArcNetworkDirty();
         }
     }
     updateUI();
@@ -828,7 +829,10 @@ window.sellTower = function () {
     const refund = Math.floor((selectedPlacedTower.totalCost || selectedPlacedTower.cost) * 0.7);
     money += refund;
     const index = towers.indexOf(selectedPlacedTower);
-    if (index > -1) towers.splice(index, 1);
+    if (index > -1) {
+        towers.splice(index, 1);
+        markArcNetworkDirty();
+    }
     createParticles(selectedPlacedTower.x, selectedPlacedTower.y, '#ffffff', 10);
     deselectTower();
     updateUI();
@@ -1110,12 +1114,13 @@ function buildTower(worldX, worldY) {
             hardpointScale: hardpointRules ? hardpointRules.sizeScale : 1
         };
         towers.push(newTower);
+        markArcNetworkDirty();
 
         // Quick flow: keep the newly built tower selected for instant upgrades.
         buildTarget = null;
         selectPlacedTower(newTower);
 
-        createParticles(validation.snap.x, validation.snap.y, towerConfig.color, 10);
+        createParticles(validation.snap.x, validation.snap.y, towerConfig.color, 5);
         updateUI();
         saveGame(); // Save on build
         return newTower;

@@ -368,22 +368,19 @@ function draw() {
         // Restore context to reset alpha for health bar etc.
         ctx.globalAlpha = 1.0;
 
-        // Elite Visuals (Veteran Rifts)
+        // Elite Visuals (Veteran Rifts): compact single marker above unit.
         if (e.riftLevel > 1) {
-            ctx.strokeStyle = '#fff';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.arc(e.x, e.y, (e.width ? e.width / 2 : 10) + 4 + Math.sin(frameCount * 0.2) * 2, 0, Math.PI * 2);
-            ctx.setLineDash([2, 5]);
-            ctx.stroke();
-            ctx.setLineDash([]);
+            const markerY = e.y - (e.width ? e.width / 2 : 10) - 8;
+            const markerSize = Math.min(6, 4 + Math.floor((e.riftLevel - 1) / 2));
 
-            // Text indicator for very high tiers
-            if (e.riftLevel >= 3) {
-                ctx.fillStyle = '#fff';
-                ctx.font = 'bold 10px Orbitron';
-                ctx.fillText(`ELITE`, e.x, e.y - 15);
-            }
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.88)';
+            ctx.beginPath();
+            ctx.moveTo(e.x, markerY - markerSize);
+            ctx.lineTo(e.x + markerSize, markerY);
+            ctx.lineTo(e.x, markerY + markerSize);
+            ctx.lineTo(e.x - markerSize, markerY);
+            ctx.closePath();
+            ctx.fill();
         }
 
         // Health bar
@@ -446,6 +443,11 @@ function draw() {
 
     // --- Entity Status Visuals ---
     // Frozen pulse on enemies
+    const renderStaticStatus = activeStaticStatusCount > 0;
+    const useHalfRateStatus = PERFORMANCE_RULES.enabled
+        && renderStaticStatus
+        && enemies.length >= PERFORMANCE_RULES.statusHalfRateEnemyThreshold
+        && ((frameCount & 1) === 1);
     enemies.forEach(e => {
         if (e.frozen) {
             ctx.strokeStyle = '#00f3ff';
@@ -460,10 +462,24 @@ function draw() {
             ctx.fill();
         }
 
+        if (!renderStaticStatus) return;
+
         const staticCharges = e.staticCharges || 0;
         const hasStatic = staticCharges > 0;
         const isStaticStunned = (e.staticStunTimer || 0) > 0;
         if (!hasStatic && !isStaticStunned) return;
+        if (!isWorldPointVisible(e.x, e.y, 90)) return;
+
+        let nearCursor = false;
+        if (isHovering && PERFORMANCE_RULES.enabled) {
+            const dx = e.x - mouseX;
+            const dy = e.y - mouseY;
+            const maxDist = PERFORMANCE_RULES.staticLabelNearCursorRadius;
+            nearCursor = ((dx * dx) + (dy * dy)) <= (maxDist * maxDist);
+        }
+
+        // Under pressure, update static status visuals every other frame except near cursor.
+        if (useHalfRateStatus && !nearCursor) return;
 
         const r = (e.width ? e.width / 2 : 10) + 8;
         const pulse = 1 + Math.sin(frameCount * 0.35 + e.x * 0.01) * 0.12;
@@ -478,10 +494,13 @@ function draw() {
             ctx.stroke();
             ctx.setLineDash([]);
 
-            ctx.fillStyle = '#b8e9ff';
-            ctx.font = 'bold 10px Orbitron';
-            ctx.textAlign = 'center';
-            ctx.fillText(`S:${staticCharges}`, e.x, e.y - r - 7);
+            const showStaticLabel = !PERFORMANCE_RULES.enabled || nearCursor;
+            if (showStaticLabel && ((frameCount & 1) === 0 || isStaticStunned)) {
+                ctx.fillStyle = '#b8e9ff';
+                ctx.font = 'bold 10px Orbitron';
+                ctx.textAlign = 'center';
+                ctx.fillText(`S:${staticCharges}`, e.x, e.y - r - 7);
+            }
         }
 
         if (isStaticStunned) {
@@ -713,30 +732,62 @@ function drawTowerOne(type, x, y, color, scale = 1) {
     }
 }
 
+function isWorldPointVisible(x, y, margin = 120) {
+    const sx = x * camera.zoom + camera.x;
+    const sy = y * camera.zoom + camera.y;
+    return sx >= -margin && sx <= width + margin && sy >= -margin && sy <= height + margin;
+}
+
 function drawArcTowerLinks() {
+    if (ARC_TOWER_RULES.disableCalculationsForPerfTest) return;
     if (!arcTowerLinks || arcTowerLinks.length === 0) return;
+
+    if (ARC_TOWER_RULES.lowAnimationMode) {
+        ctx.save();
+        ctx.lineCap = 'round';
+        for (const link of arcTowerLinks) {
+            if (!link || !link.a || !link.b) continue;
+            if (!isWorldPointVisible(link.a.x, link.a.y, 120) && !isWorldPointVisible(link.b.x, link.b.y, 120)) continue;
+
+            const intensity = Math.max(1, Math.min(ARC_TOWER_RULES.maxBonus, link.strength || 1));
+            ctx.strokeStyle = `rgba(176, 233, 255, ${0.18 + intensity * 0.08})`;
+            ctx.lineWidth = 0.8 + intensity * 0.32;
+            ctx.beginPath();
+            ctx.moveTo(link.a.x, link.a.y);
+            ctx.lineTo(link.b.x, link.b.y);
+            ctx.stroke();
+        }
+        ctx.restore();
+        return;
+    }
 
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
+    const linkCount = arcTowerLinks.length;
+    const heavyMode = linkCount > 80;
+    const ultraMode = linkCount > 140;
 
     for (const link of arcTowerLinks) {
         if (!link || !link.a || !link.b) continue;
+        if (!isWorldPointVisible(link.a.x, link.a.y, 140) && !isWorldPointVisible(link.b.x, link.b.y, 140)) continue;
         const intensity = Math.max(1, Math.min(ARC_TOWER_RULES.maxBonus, link.strength || 1));
         const dashOffset = -(frameCount * (1.6 + intensity * 0.42));
         const coreWidth = 0.8 + intensity * 0.45;
 
-        // Soft outer glow
-        ctx.strokeStyle = `rgba(124, 215, 255, ${0.16 + intensity * 0.07})`;
-        ctx.lineWidth = coreWidth + 2.2;
-        ctx.beginPath();
-        ctx.moveTo(link.a.x, link.a.y);
-        ctx.lineTo(link.b.x, link.b.y);
-        ctx.stroke();
+        if (!ultraMode) {
+            // Soft outer glow
+            ctx.strokeStyle = `rgba(124, 215, 255, ${0.16 + intensity * 0.07})`;
+            ctx.lineWidth = coreWidth + 2.2;
+            ctx.beginPath();
+            ctx.moveTo(link.a.x, link.a.y);
+            ctx.lineTo(link.b.x, link.b.y);
+            ctx.stroke();
+        }
 
         // Racing electric dash
         ctx.strokeStyle = `rgba(214, 244, 255, ${0.35 + intensity * 0.08})`;
         ctx.lineWidth = coreWidth;
-        ctx.setLineDash([8, Math.max(5, 16 - intensity)]);
+        ctx.setLineDash(heavyMode ? [6, 10] : [8, Math.max(5, 16 - intensity)]);
         ctx.lineDashOffset = dashOffset;
         ctx.beginPath();
         ctx.moveTo(link.a.x, link.a.y);
@@ -744,28 +795,87 @@ function drawArcTowerLinks() {
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // Travel pulse marker
-        const phase = (frameCount * 0.018 + ((link.a.x + link.a.y + link.b.x + link.b.y) * 0.0007)) % 1;
-        const px = link.a.x + (link.b.x - link.a.x) * phase;
-        const py = link.a.y + (link.b.y - link.a.y) * phase;
-        ctx.fillStyle = '#e6f8ff';
-        ctx.shadowBlur = 10 + intensity * 2;
-        ctx.shadowColor = '#9fe3ff';
-        ctx.beginPath();
-        ctx.arc(px, py, 1.5 + intensity * 0.35, 0, Math.PI * 2);
-        ctx.fill();
+        if (!heavyMode) {
+            // Travel pulse marker
+            const phase = (frameCount * 0.018 + ((link.a.x + link.a.y + link.b.x + link.b.y) * 0.0007)) % 1;
+            const px = link.a.x + (link.b.x - link.a.x) * phase;
+            const py = link.a.y + (link.b.y - link.a.y) * phase;
+            ctx.fillStyle = '#e6f8ff';
+            ctx.shadowBlur = 10 + intensity * 2;
+            ctx.shadowColor = '#9fe3ff';
+            ctx.beginPath();
+            ctx.arc(px, py, 1.5 + intensity * 0.35, 0, Math.PI * 2);
+            ctx.fill();
+        }
     }
 
     ctx.restore();
 }
 
 function drawArcLightningBursts() {
+    if (ARC_TOWER_RULES.disableCalculationsForPerfTest) return;
     if (!arcLightningBursts || arcLightningBursts.length === 0) return;
+
+    if (ARC_TOWER_RULES.lowAnimationMode) {
+        ctx.save();
+        ctx.lineCap = 'round';
+        for (const burst of arcLightningBursts) {
+            if (!isWorldPointVisible(burst.x1, burst.y1, 120) && !isWorldPointVisible(burst.x2, burst.y2, 120)) continue;
+
+            const alpha = Math.max(0, Math.min(1, burst.life / (burst.isChain ? 7 : 8)));
+
+            // Keep direct tower shots visible every frame with fixed-cost styling.
+            if (!burst.isChain) {
+                const dx = burst.x2 - burst.x1;
+                const dy = burst.y2 - burst.y1;
+                const len = Math.hypot(dx, dy);
+
+                if (len > 0.001) {
+                    const nx = -dy / len;
+                    const ny = dx / len;
+                    const midX = burst.x1 + dx * 0.5 + nx * 2.5;
+                    const midY = burst.y1 + dy * 0.5 + ny * 2.5;
+
+                    ctx.strokeStyle = `rgba(225, 250, 255, ${0.62 * alpha})`;
+                    ctx.lineWidth = 1.9;
+                    ctx.beginPath();
+                    ctx.moveTo(burst.x1, burst.y1);
+                    ctx.lineTo(midX, midY);
+                    ctx.lineTo(burst.x2, burst.y2);
+                    ctx.stroke();
+
+                    // Thin core line for readability without expensive glow passes.
+                    ctx.strokeStyle = `rgba(255, 255, 255, ${0.78 * alpha})`;
+                    ctx.lineWidth = 0.9;
+                    ctx.beginPath();
+                    ctx.moveTo(burst.x1, burst.y1);
+                    ctx.lineTo(midX, midY);
+                    ctx.lineTo(burst.x2, burst.y2);
+                    ctx.stroke();
+                }
+                continue;
+            }
+
+            // Bounce arcs stay cheaper: single segment and half-rate updates.
+            if ((frameCount & 1) === 1) continue;
+            ctx.strokeStyle = `rgba(204, 244, 255, ${0.28 * alpha})`;
+            ctx.lineWidth = 1.0;
+            ctx.beginPath();
+            ctx.moveTo(burst.x1, burst.y1);
+            ctx.lineTo(burst.x2, burst.y2);
+            ctx.stroke();
+        }
+        ctx.restore();
+        return;
+    }
 
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
+    const burstCount = arcLightningBursts.length;
+    const heavyMode = burstCount > 160;
 
     for (const burst of arcLightningBursts) {
+        if (!isWorldPointVisible(burst.x1, burst.y1, 140) && !isWorldPointVisible(burst.x2, burst.y2, 140)) continue;
         const alpha = Math.max(0, Math.min(1, burst.life / (burst.isChain ? 7 : 8)));
         const intensity = Math.max(1, Math.min(ARC_TOWER_RULES.maxBonus, burst.intensity || 1));
         const jitter = 2 + intensity * 0.65;
@@ -777,7 +887,7 @@ function drawArcLightningBursts() {
 
         const nx = -dy / len;
         const ny = dx / len;
-        const points = 5;
+        const points = heavyMode ? 3 : 5;
 
         ctx.beginPath();
         ctx.moveTo(burst.x1, burst.y1);
@@ -790,13 +900,15 @@ function drawArcLightningBursts() {
         }
         ctx.lineTo(burst.x2, burst.y2);
 
-        ctx.strokeStyle = `rgba(130, 220, 255, ${0.26 * alpha})`;
-        ctx.lineWidth = 3 + intensity * 0.45;
+        ctx.strokeStyle = `rgba(236, 250, 255, ${(heavyMode ? 0.55 : 0.7) * alpha})`;
+        ctx.lineWidth = (heavyMode ? 0.9 : 1) + intensity * 0.15;
         ctx.stroke();
 
-        ctx.strokeStyle = `rgba(236, 250, 255, ${0.7 * alpha})`;
-        ctx.lineWidth = 1 + intensity * 0.18;
-        ctx.stroke();
+        if (!heavyMode) {
+            ctx.strokeStyle = `rgba(130, 220, 255, ${0.26 * alpha})`;
+            ctx.lineWidth = 3 + intensity * 0.45;
+            ctx.stroke();
+        }
     }
 
     ctx.restore();

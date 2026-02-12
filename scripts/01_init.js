@@ -23,6 +23,7 @@ window.onload = () => {
 
     // Init Audio UI from saved settings
     AudioEngine.updateSoundUI();
+    updatePerformanceUI();
     setCommandCenterAccess(localStorage.getItem(DEBUG_UNLOCK_KEY) === 'true');
 
     // Hotkeys

@@ -1,4 +1,11 @@
 // --- Main Loop ---
+let updateParticleBudgetUsed = false;
+
+function emitUpdateParticleOnce(x, y, color, count = 1) {
+    if (updateParticleBudgetUsed) return;
+    updateParticleBudgetUsed = true;
+    createParticles(x, y, color, count);
+}
 
 function gameLoop(timestamp) {
     const dt = timestamp - lastTime; // could be used for delta time
@@ -15,6 +22,7 @@ function gameLoop(timestamp) {
 
 function update() {
     frameCount++;
+    updateParticleBudgetUsed = false;
 
     // --- Ability Cooldown Management ---
     if (frameCount % 60 === 0) { // Every ~1 sec
@@ -274,6 +282,7 @@ window.debugIncreaseWave = function (steps = 1, autoStart = true) {
     particles = [];
     arcLightningBursts = [];
     arcTowerLinks = [];
+    markArcNetworkDirty();
     spawnQueue = [];
     isWaveActive = false;
 
@@ -292,6 +301,7 @@ window.debugIncreaseWave = function (steps = 1, autoStart = true) {
             particles = [];
             arcLightningBursts = [];
             arcTowerLinks = [];
+            markArcNetworkDirty();
             spawnQueue = [];
             isWaveActive = false;
         }
@@ -316,6 +326,7 @@ window.debugRebuildRiftsByWave = function () {
     particles = [];
     arcLightningBursts = [];
     arcTowerLinks = [];
+    markArcNetworkDirty();
     spawnQueue = [];
     isWaveActive = false;
     selectedRift = null;
@@ -358,22 +369,39 @@ window.debugRebuildRiftsByWave = function () {
 };
 
 function updateEnemies() {
+    const arcCalcEnabled = !ARC_TOWER_RULES.disableCalculationsForPerfTest;
+    const frozenTrailInterval = PERFORMANCE_RULES.enabled ? 30 : 16;
+    const bulwarkPulseInterval = PERFORMANCE_RULES.enabled ? 54 : 40;
+    const bulwarkPulseCount = PERFORMANCE_RULES.enabled ? 1 : 1;
+    let staticStatusCount = 0;
+
     for (let i = enemies.length - 1; i >= 0; i--) {
         let e = enemies[i];
+        const hasStaticStatus = arcCalcEnabled
+            && (((e.staticCharges || 0) > 0) || ((e.staticStunTimer || 0) > 0));
+
+        if (!arcCalcEnabled && ((e.staticCharges || 0) > 0 || (e.staticStunTimer || 0) > 0)) {
+            e.staticCharges = 0;
+            e.staticStunTimer = 0;
+        }
 
         // Handle Status Effects
         if (e.frozen) {
-            if (e.staticStunTimer > 0) e.staticStunTimer--;
+            if (arcCalcEnabled && hasStaticStatus) staticStatusCount++;
+            if (arcCalcEnabled && e.staticStunTimer > 0) e.staticStunTimer--;
             e.frozenTimer--;
             if (e.frozenTimer <= 0) e.frozen = false;
-            // Draw frozen particles?
-            if (frameCount % 10 === 0) createParticles(e.x, e.y, '#00f3ff', 1);
+            // Draw frozen particles with reduced update cost.
+            if (frameCount % frozenTrailInterval === 0) {
+                emitUpdateParticleOnce(e.x, e.y, '#00f3ff', 1);
+            }
             continue; // Frozen enemies don't move
         }
 
-        if (e.staticStunTimer > 0) {
+        if (arcCalcEnabled && e.staticStunTimer > 0) {
+            staticStatusCount++;
             e.staticStunTimer--;
-            if (frameCount % 8 === 0) createParticles(e.x, e.y, '#7cd7ff', 1);
+            if (frameCount % PERFORMANCE_RULES.staticStunTrailInterval === 0) emitUpdateParticleOnce(e.x, e.y, '#7cd7ff', 1);
             continue; // Stunned enemies don't move
         }
 
@@ -405,8 +433,8 @@ function updateEnemies() {
 
 
         // Bulwark pulsing visuals
-        if (e.type === 'bulwark' && frameCount % 30 === 0) {
-            createParticles(e.x, e.y, '#fcee0a', 2);
+        if (e.type === 'bulwark' && frameCount % bulwarkPulseInterval === 0) {
+            emitUpdateParticleOnce(e.x, e.y, '#fcee0a', bulwarkPulseCount);
         }
 
         // --- Phase Shifter Logic ---
@@ -414,10 +442,19 @@ function updateEnemies() {
             // Toggle invisibility every 180 frames (~3 secs)
             e.isInvisible = (frameCount % 360) > 180;
         }
+
+        if (arcCalcEnabled && hasStaticStatus) staticStatusCount++;
     }
+
+    activeStaticStatusCount = arcCalcEnabled ? staticStatusCount : 0;
 }
 
 function updateArcEffects() {
+    if (ARC_TOWER_RULES.disableCalculationsForPerfTest) {
+        if (arcLightningBursts.length > 0) arcLightningBursts = [];
+        return;
+    }
+
     for (let i = arcLightningBursts.length - 1; i >= 0; i--) {
         arcLightningBursts[i].life--;
         if (arcLightningBursts[i].life <= 0) arcLightningBursts.splice(i, 1);
@@ -440,6 +477,14 @@ function isArcLinkPair(a, b) {
 }
 
 function refreshArcTowerNetwork() {
+    if (ARC_TOWER_RULES.disableCalculationsForPerfTest) {
+        if (arcTowerLinks.length > 0) arcTowerLinks = [];
+        return;
+    }
+
+    if (!arcNetworkDirty) return;
+    arcNetworkDirty = false;
+
     const arcTowers = towers.filter(t => t.type === 'arc');
     arcTowerLinks = [];
 
@@ -494,6 +539,13 @@ function refreshArcTowerNetwork() {
 }
 
 function addArcLightningBurst(x1, y1, x2, y2, intensity = 1, isChain = false) {
+    if (ARC_TOWER_RULES.disableCalculationsForPerfTest) return;
+
+    if (arcLightningBursts.length >= ARC_TOWER_RULES.maxLightningBursts) {
+        // Drop the oldest burst to keep VFX bounded under heavy chain spam.
+        arcLightningBursts.shift();
+    }
+
     arcLightningBursts.push({
         x1,
         y1,
@@ -506,15 +558,19 @@ function addArcLightningBurst(x1, y1, x2, y2, intensity = 1, isChain = false) {
 }
 
 function applyStaticCharges(enemy, amount) {
+    if (ARC_TOWER_RULES.disableCalculationsForPerfTest) return;
     if (!enemy || amount <= 0) return;
 
     enemy.staticCharges = Math.max(0, (enemy.staticCharges || 0) + amount);
-    createParticles(enemy.x, enemy.y, '#7cd7ff', Math.min(6, 2 + amount));
+    const hitParticles = PERFORMANCE_RULES.enabled
+        ? Math.max(1, Math.floor((Math.min(6, 2 + amount)) * PERFORMANCE_RULES.staticHitParticleScale))
+        : Math.min(6, 2 + amount);
+    createParticles(enemy.x, enemy.y, '#7cd7ff', hitParticles);
 
     while (enemy.staticCharges >= ARC_TOWER_RULES.staticThreshold) {
         enemy.staticCharges -= ARC_TOWER_RULES.staticThreshold;
         enemy.staticStunTimer = Math.max(enemy.staticStunTimer || 0, ARC_TOWER_RULES.stunFrames);
-        createParticles(enemy.x, enemy.y, '#b7eaff', 9);
+        createParticles(enemy.x, enemy.y, '#b7eaff', PERFORMANCE_RULES.enabled ? PERFORMANCE_RULES.staticStunParticleCount : 5);
         lightSources.push({ x: enemy.x, y: enemy.y, radius: 70, color: '#7cd7ff', life: 1.0 });
     }
 }
@@ -534,6 +590,21 @@ function findArcBounceTarget(fromX, fromY, visited) {
 }
 
 function fireArcTower(tower, target) {
+    if (ARC_TOWER_RULES.disableCalculationsForPerfTest) {
+        // Fall back to a basic projectile path while Arc systems are disabled.
+        projectiles.push({
+            x: tower.x,
+            y: tower.y,
+            target: target,
+            speed: 10,
+            damage: tower.damage,
+            color: tower.color
+        });
+        lightSources.push({ x: tower.x, y: tower.y, radius: 40, color: tower.color, life: 1.0 });
+        AudioEngine.playSFX('shoot');
+        return;
+    }
+
     const bonus = Math.max(1, Math.min(ARC_TOWER_RULES.maxBonus, tower.arcNetworkBonus || 1));
     const directDamage = tower.damage;
     const bounceDamage = Math.max(1, tower.damage * ARC_TOWER_RULES.bounceDamageMult);
@@ -565,6 +636,8 @@ function fireArcTower(tower, target) {
 }
 
 function updateTowers() {
+    const overclockTrailInterval = PERFORMANCE_RULES.enabled ? 24 : 14;
+
     refreshArcTowerNetwork();
 
     // Update Towers
@@ -575,7 +648,7 @@ function updateTowers() {
             cdRate = 2; // Double fire rate
             t.overclockTimer--;
             if (t.overclockTimer <= 0) t.overclocked = false;
-            if (frameCount % 10 === 0) createParticles(t.x, t.y, '#fcee0a', 1);
+            if (frameCount % overclockTrailInterval === 0) emitUpdateParticleOnce(t.x, t.y, '#fcee0a', 1);
         }
 
         if (t.cooldown > 0) t.cooldown -= cdRate;
@@ -724,7 +797,7 @@ function hitEnemy(enemy, damage, hitData = null) {
             // Gain Energy
             energy = Math.min(maxEnergy, energy + 1);
 
-            createParticles(enemy.x, enemy.y, enemy.color, 8);
+            createParticles(enemy.x, enemy.y, enemy.color, 4);
             lightSources.push({ x: enemy.x, y: enemy.y, radius: 60, color: enemy.color, life: 1.0 });
 
             AudioEngine.playSFX('explosion');

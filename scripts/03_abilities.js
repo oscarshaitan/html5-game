@@ -330,6 +330,7 @@ window.loadGame = function () {
         cooldown: t.cooldown || 0,
         maxCooldown: t.maxCooldown || t.cooldown || 30
     }));
+    markArcNetworkDirty();
 
     expandWorldBounds();
     buildHardpoints();
@@ -613,6 +614,7 @@ function resetGameLogic() {
 
     baseLevel = 0; // Reset base
     towers = [];
+    markArcNetworkDirty();
     arcTowerLinks = [];
     arcLightningBursts = [];
     selectedTowerType = 'basic';

@@ -6,6 +6,7 @@
 const GRID_SIZE = 40;
 const CANVAS_BG = '#050510';
 const DEBUG_UNLOCK_KEY = 'neonDefenseDebugUnlocked';
+const PERFORMANCE_MODE_KEY = 'neonDefensePerformanceMode';
 const ZONE0_RADIUS_CELLS = 6;
 const WORLD_MIN_COLS = 140;
 const WORLD_MIN_ROWS = 90;
@@ -50,6 +51,9 @@ const TOWERS = {
 };
 
 const ARC_TOWER_RULES = {
+    // Temporary perf test switch: disables Arc-specific calculations and VFX.
+    // Set to false to restore full Arc mechanics.
+    disableCalculationsForPerfTest: false,
     minLinkSpacingCells: 1,
     maxLinkSpacingCells: 3,
     maxBonus: 5,
@@ -58,7 +62,32 @@ const ARC_TOWER_RULES = {
     baseChainTargets: 3,
     extraChainPerBonus: 1,
     chainRange: GRID_SIZE * 4,
-    bounceDamageMult: 0.7
+    bounceDamageMult: 0.7,
+    maxLightningBursts: 180,
+    lowAnimationMode: true
+};
+
+const PERFORMANCE_RULES = {
+    enabled: localStorage.getItem(PERFORMANCE_MODE_KEY) !== 'off',
+    staticLabelNearCursorRadius: 95,
+    statusHalfRateEnemyThreshold: 26,
+    staticHitParticleScale: 0.45,
+    staticStunParticleCount: 2,
+    staticStunTrailInterval: 20
+};
+ARC_TOWER_RULES.lowAnimationMode = PERFORMANCE_RULES.enabled;
+
+function updatePerformanceUI() {
+    const btn = document.getElementById('performance-mode-btn');
+    if (!btn) return;
+    btn.innerText = `PERFORMANCE: ${PERFORMANCE_RULES.enabled ? 'ON' : 'OFF'}`;
+}
+
+window.togglePerformanceMode = function () {
+    PERFORMANCE_RULES.enabled = !PERFORMANCE_RULES.enabled;
+    ARC_TOWER_RULES.lowAnimationMode = PERFORMANCE_RULES.enabled;
+    localStorage.setItem(PERFORMANCE_MODE_KEY, PERFORMANCE_RULES.enabled ? 'on' : 'off');
+    updatePerformanceUI();
 };
 
 window.toggleNoBuildOverlay = function () {
@@ -147,6 +176,12 @@ let paths = []; // Array of arrays of points
 let hardpoints = [];
 let arcTowerLinks = []; // {a, b, strength}
 let arcLightningBursts = []; // transient lightning segments
+let arcNetworkDirty = true;
+let activeStaticStatusCount = 0;
+
+function markArcNetworkDirty() {
+    arcNetworkDirty = true;
+}
 
 let spawnQueue = []; // New: Array of enemy types to spawn
 let spawnTimer = 0;
