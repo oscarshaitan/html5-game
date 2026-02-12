@@ -72,9 +72,9 @@ Focus: keep late game solvable while preserving tension.
 
 ### D1. New Tower Concepts
 - [x] Arc Tower: chain lightning with diminishing jumps
-- [ ] Cryo Field Tower: persistent slow zone and freeze buildup
-- [ ] Siege Mortar: delayed AOE with armor break utility
-- [ ] Prism Tower: beam splits based on nearby modifiers
+- [ ] Disruptor Tower: utility support that applies Expose and brief stealth reveal
+- [ ] Re-evaluate Siege Mortar after Tech Tree telemetry (deferred)
+- [ ] Re-evaluate Prism Tower after Tech Tree telemetry (deferred)
 
 ### D2. Modifier System
 - [ ] Prefix/suffix tower mods (example: Focused, Volatile, Stable)
@@ -106,6 +106,13 @@ Goal: custom strategy progression that changes decision-making each run.
 - [ ] Mutual-exclusion nodes for strong archetype divergence
 - [ ] Telemetry for dominant node paths and abandonment rates
 
+### E4. Frost Control Package (First Branch Lane)
+- [ ] Cryo Conductors: Arc attacks apply Chill stacks
+- [ ] Cryo EMP: EMP leaves short chill field
+- [ ] Thermal Weakness: chilled targets take extra incoming damage
+- [ ] Icebreak: bonus hit damage against frozen targets
+- [ ] Deep Freeze Protocol capstone with freeze-immunity guardrail
+
 ---
 
 ## Milestone F: Content and Replayability
@@ -129,8 +136,8 @@ Goal: custom strategy progression that changes decision-making each run.
 ## Release Order (Recommended)
 
 1. Milestone B + C (difficulty and late-path solvability)
-2. Milestone D (tower mechanics and modifiers)
-3. Milestone E (tech tree strategy layer)
+2. Milestone E (tech tree strategy layer, Frost Control package first)
+3. Milestone D (Disruptor tower and modifiers)
 4. Milestone F (content replay loops)
 5. Milestone G (tooling hardening in parallel)
 

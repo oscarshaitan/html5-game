@@ -1192,7 +1192,7 @@ function fireArcTower(tower, target) {
 
     let fromX = target.x;
     let fromY = target.y;
-    const maxBounces = ARC_TOWER_RULES.baseChainTargets + (bonus * ARC_TOWER_RULES.extraChainPerBonus);
+    const maxBounces = ARC_TOWER_RULES.baseChainTargets;
 
     for (let i = 0; i < maxBounces; i++) {
         const bounceTarget = findArcBounceTarget(fromX, fromY, visited);

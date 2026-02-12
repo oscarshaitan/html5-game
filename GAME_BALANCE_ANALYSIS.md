@@ -105,96 +105,108 @@ Late-game losses should come from tactical or economic mistakes, not map geometr
 
 ---
 
-## 4. New Tower Mechanics (Ideas)
+## 4. New Tower Direction (Locked for Next Iteration)
 
-## New Towers
+This section reflects the current product direction.
 
-Implemented in current build:
-- Arc Tower (Control DPS / Utility)
-  - Static charge system with stun trigger
-  - Network bonus from 3-cell-or-less Arc links (up to x5)
-  - Chain lightning with bonus-scaled bounce count
+### Direction Decisions
 
-1. Cryo Field Tower (Area Control)
-- Low direct DPS, stacks chill leading to freeze vulnerability.
-- Synergy: boosts crit chance from Sniper-like towers against chilled targets.
+- Next tower to add: **Disruptor Tower** (utility support).
+- **Siege Mortar** and **Prism Tower** are deferred.
+- **Frost is no longer planned as a standalone tower** in this phase.
+- Frost mechanics move into the Tech Tree as a Control branch unlock path.
 
-2. Siege Mortar (Burst AOE)
-- Delayed shell travel, high splash, armor shred on hit.
-- Great for pre-fired choke zones.
+### Disruptor Tower (Next Addition)
 
-3. Prism Tower (Adaptive Beam)
-- Single beam splits when modifiers are installed.
-- Can be tuned into anti-boss or anti-swarm via mods.
+Role: utility amplifier that increases team damage reliability without replacing Arc.
 
-## Modifier Ideas
+Design intent:
+- Applies `Expose` debuff: enemies take bonus damage from all towers.
+- Provides brief stealth reveal pulse on hit (small radius around target).
+- Low personal DPS, high strategic value in mixed compositions.
 
-### Prefix Mods
-- Focused: higher single-target damage, lower AOE/chain
-- Volatile: larger burst radius, lower fire consistency
-- Stabilized: lower max output, higher uptime/reliability
+Balance goals:
+- Should improve mixed builds, not mono-tower spam.
+- Must not outperform Arc/Sniper as direct boss killer.
+- Must have visible payoff in Wave Intelligence and selection panel stats.
 
-### Suffix Mods
-- of Flux: occasional overcharge shots
-- of Anchor: stronger against fast units
-- of Extraction: grants small bonus energy per contribution
+### Frost as Tech Package (Not a Tower)
 
-### Mod Constraints
-- One prefix + one suffix max per tower
-- Mod rarity tied to milestone waves
-- Upgrade cost multiplier based on mod tier
+Frost becomes a branch-defined utility suite that upgrades existing systems.
+
+Control branch Frost package:
+1. `Cryo Conductors`: Arc hits apply Chill stacks.
+2. `Cryo EMP`: EMP leaves a short chill field after detonation.
+3. `Thermal Weakness`: chilled targets take bonus incoming damage.
+4. `Icebreak`: bonus hit damage against frozen targets.
+5. `Deep Freeze Protocol` (capstone): Chill threshold triggers short freeze.
+
+Guardrails for freeze gameplay:
+- Bosses receive reduced freeze duration.
+- Freeze immunity window after each freeze proc.
+- Chill decays when not refreshed.
+- Optional proc-rate cap in extreme density scenarios.
 
 ---
 
-## 5. Tech Tree Concept (Custom Strategy Progression)
+## 5. Tech Tree v1 Definition
 
-Goal: allow players to define strategic identity, not only react tactically.
+Goal: let players express run identity through planned progression choices.
 
-## Branches
+### Branches (v1)
 
 1. Offense
-- Projectile damage, penetration, execution effects
+- Projectile damage shaping
+- Penetration / execution style effects
 
 2. Control
-- Slow, stun, reroute support, debuff amplification
+- Debuff amplification
+- Frost package (defined above)
 
 3. Economy
-- Credit smoothing, upgrade discounts, salvage efficiency
+- Credit smoothing
+- Upgrade/sell economy efficiency
 
 4. Core Systems
-- Core module strength, emergency tools, survivability utilities
+- Core durability
+- Emergency defensive tools
 
-## Node Design Principles
+### Suggested Node Budget
 
-- Each node should change decisions, not just add flat stats.
-- Include mutual exclusions to create real build identity.
-- Gate highest-impact nodes behind tradeoff paths.
+- v1 target: **12-16 nodes total**
+- 3 tiers per branch
+- 1 capstone per branch
+- mutual exclusions on high-impact nodes
 
-## Unlock Flow
+### Unlock Flow
 
-- Earn Research Points from:
+- Research Points earned from:
   - wave milestones
   - challenge objectives
   - no-leak bonuses
-- Spend points pre-run and at limited in-run checkpoints.
+- Spend points:
+  - pre-run loadout configuration
+  - limited in-run checkpoints
 
-## Anti-Dominance Guardrails
+### Anti-Dominance Rules
 
-- Hard cap stacking of same effect family
-- Diminishing returns on repeated archetype picks
-- Mandatory cross-branch investment for top-tier unlocks
+- Effect-family stacking caps
+- Diminishing returns for repeated archetype picks
+- Cross-branch prerequisites for top-tier nodes
 
 ---
 
 ## 6. Practical Balancing Roadmap (Recommended)
 
-1. Add one new control tower + one modifier lane
-2. Add lightweight Tech Tree v1 (8-12 nodes total)
-3. Gather telemetry:
+1. Ship Tech Tree framework (research currency, graph, UI shell).
+2. Ship Control branch Frost package as first complete branch lane.
+3. Add Disruptor Tower with synergy telemetry hooks.
+4. Gather telemetry:
 - average loss wave
 - loss reason tags
 - tower usage distribution
-4. Iterate every two releases using telemetry and player reports
+- tech path pick rates
+5. Re-evaluate deferred towers (Mortar/Prism) only after telemetry review.
 
 ---
 

@@ -988,7 +988,7 @@ function updateSelectionUI() {
     const refund = Math.floor((t.totalCost || t.cost) * 0.7);
     const hardpointLabel = t.hardpointType === 'core' ? 'CORE HARDPOINT' : (t.hardpointType === 'micro' ? 'MICRO HARDPOINT' : null);
     const arcBonus = Math.max(1, Math.min(ARC_TOWER_RULES.maxBonus, t.arcNetworkBonus || 1));
-    const arcChain = ARC_TOWER_RULES.baseChainTargets + (arcBonus * ARC_TOWER_RULES.extraChainPerBonus);
+    const arcChain = ARC_TOWER_RULES.baseChainTargets;
 
     panel.classList.remove('hidden');
     panel.innerHTML = `

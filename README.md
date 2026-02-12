@@ -20,6 +20,11 @@ You defend the core against escalating waves, expanding Rift networks, elite pat
 - Base upgrades and life repair
 - Enemy variety including Boss, Splitter, Bulwark, and Shifter behaviors
 
+### Balance Direction (Planned)
+- Next tower target: **Disruptor** (utility support, Expose + stealth reveal)
+- Frost mechanics are planned as a **Tech Tree Control branch** unlock path
+- Mortar and Prism are currently deferred pending telemetry after Tech Tree v1
+
 ### Rift and Wave Systems
 - Multi-path Rift spawning
 - Rift tier progression after high waves

@@ -60,7 +60,6 @@ const ARC_TOWER_RULES = {
     staticThreshold: 100,
     stunFrames: 30, // 0.5s at 60 FPS
     baseChainTargets: 3,
-    extraChainPerBonus: 1,
     chainRange: GRID_SIZE * 4,
     bounceDamageMult: 0.7,
     maxLightningBursts: 180,
