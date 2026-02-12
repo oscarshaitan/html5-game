@@ -47,7 +47,7 @@ const TOWERS = {
     basic: { cost: 50, range: 100, damage: 10, cooldown: 30, color: '#00f3ff', type: 'basic' },
     rapid: { cost: 120, range: 80, damage: 4, cooldown: 10, color: '#fcee0a', type: 'rapid' },
     sniper: { cost: 200, range: 250, damage: 50, cooldown: 90, color: '#ff00ac', type: 'sniper' },
-    arc: { cost: 180, range: 150, damage: 8, cooldown: 34, color: '#7cd7ff', type: 'arc' }
+    arc: { cost: 180, range: 100, damage: 8, cooldown: 34, color: '#7cd7ff', type: 'arc' }
 };
 
 const ARC_TOWER_RULES = {
@@ -57,7 +57,7 @@ const ARC_TOWER_RULES = {
     minLinkSpacingCells: 1,
     maxLinkSpacingCells: 3,
     maxBonus: 5,
-    staticThreshold: 20,
+    staticThreshold: 50,
     stunFrames: 30, // 0.5s at 60 FPS
     baseChainTargets: 3,
     extraChainPerBonus: 1,
