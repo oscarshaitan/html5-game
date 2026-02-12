@@ -57,7 +57,7 @@ const ARC_TOWER_RULES = {
     minLinkSpacingCells: 1,
     maxLinkSpacingCells: 3,
     maxBonus: 5,
-    staticThreshold: 50,
+    staticThreshold: 100,
     stunFrames: 30, // 0.5s at 60 FPS
     baseChainTargets: 3,
     extraChainPerBonus: 1,

@@ -861,6 +861,61 @@ function drawArcTowerLinks() {
     ctx.restore();
 }
 
+function getArcBurstGeometry(burst) {
+    const dx = burst.x2 - burst.x1;
+    const dy = burst.y2 - burst.y1;
+    const len = Math.hypot(dx, dy);
+    if (len <= 0.001) return null;
+    return {
+        dx,
+        dy,
+        len,
+        nx: -dy / len,
+        ny: dx / len
+    };
+}
+
+function traceElectricArcPath(burst, geom, segments, amplitudeScale = 1) {
+    const intensity = Math.max(1, Math.min(ARC_TOWER_RULES.maxBonus, burst.intensity || 1));
+    const ampBase = (2.2 + intensity * 0.7) * amplitudeScale;
+    const phase = (frameCount * 0.55) + ((burst.phase || 0) * 2.31) + (burst.isChain ? 1.7 : 0);
+
+    ctx.beginPath();
+    ctx.moveTo(burst.x1, burst.y1);
+    for (let i = 1; i < segments; i++) {
+        const t = i / segments;
+        const bx = burst.x1 + geom.dx * t;
+        const by = burst.y1 + geom.dy * t;
+        const envelope = 1 - Math.abs((t - 0.5) * 2);
+        const zig = (i & 1) ? 1 : -1;
+        const jitter = (Math.sin(phase + i * 1.91) * 0.85) + (Math.cos(phase * 0.73 + i * 2.47) * 0.55);
+        const offset = (zig * ampBase + jitter * ampBase * 0.65) * envelope;
+        ctx.lineTo(bx + geom.nx * offset, by + geom.ny * offset);
+    }
+    ctx.lineTo(burst.x2, burst.y2);
+}
+
+function drawArcFork(burst, geom, alpha, intensity) {
+    if (burst.isChain) return;
+    if (((frameCount + (burst.phase || 0)) & 1) === 1) return;
+
+    const t = 0.52 + Math.sin((frameCount * 0.17) + (burst.phase || 0)) * 0.08;
+    const bx = burst.x1 + geom.dx * t;
+    const by = burst.y1 + geom.dy * t;
+    const branchDir = ((burst.phase || 0) & 1) ? 1 : -1;
+    const along = 3.2 + intensity * 0.6;
+    const out = (4.5 + intensity * 0.9) * branchDir;
+    const fx = bx + (geom.dx / geom.len) * along + geom.nx * out;
+    const fy = by + (geom.dy / geom.len) * along + geom.ny * out;
+
+    ctx.strokeStyle = `rgba(198, 246, 255, ${0.42 * alpha})`;
+    ctx.lineWidth = 0.7 + intensity * 0.12;
+    ctx.beginPath();
+    ctx.moveTo(bx, by);
+    ctx.lineTo(fx, fy);
+    ctx.stroke();
+}
+
 function drawArcLightningBursts() {
     if (ARC_TOWER_RULES.disableCalculationsForPerfTest) return;
     if (!arcLightningBursts || arcLightningBursts.length === 0) return;
@@ -872,46 +927,41 @@ function drawArcLightningBursts() {
             if (!isWorldPointVisible(burst.x1, burst.y1, 120) && !isWorldPointVisible(burst.x2, burst.y2, 120)) continue;
 
             const alpha = Math.max(0, Math.min(1, burst.life / (burst.isChain ? 7 : 8)));
+            const intensity = Math.max(1, Math.min(ARC_TOWER_RULES.maxBonus, burst.intensity || 1));
+            const geom = getArcBurstGeometry(burst);
+            if (!geom) continue;
 
             // Keep direct tower shots visible every frame with fixed-cost styling.
             if (!burst.isChain) {
-                const dx = burst.x2 - burst.x1;
-                const dy = burst.y2 - burst.y1;
-                const len = Math.hypot(dx, dy);
+                traceElectricArcPath(burst, geom, 4, 1.0);
+                ctx.strokeStyle = `rgba(225, 250, 255, ${0.62 * alpha})`;
+                ctx.lineWidth = 1.45 + intensity * 0.2;
+                ctx.stroke();
 
-                if (len > 0.001) {
-                    const nx = -dy / len;
-                    const ny = dx / len;
-                    const midX = burst.x1 + dx * 0.5 + nx * 2.5;
-                    const midY = burst.y1 + dy * 0.5 + ny * 2.5;
+                // Thin hot core improves electric readability and avoids laser look.
+                traceElectricArcPath(burst, geom, 4, 0.7);
+                ctx.strokeStyle = `rgba(255, 255, 255, ${0.8 * alpha})`;
+                ctx.lineWidth = 0.85;
+                ctx.stroke();
 
-                    ctx.strokeStyle = `rgba(225, 250, 255, ${0.62 * alpha})`;
-                    ctx.lineWidth = 1.9;
-                    ctx.beginPath();
-                    ctx.moveTo(burst.x1, burst.y1);
-                    ctx.lineTo(midX, midY);
-                    ctx.lineTo(burst.x2, burst.y2);
-                    ctx.stroke();
+                drawArcFork(burst, geom, alpha, intensity);
 
-                    // Thin core line for readability without expensive glow passes.
-                    ctx.strokeStyle = `rgba(255, 255, 255, ${0.78 * alpha})`;
-                    ctx.lineWidth = 0.9;
-                    ctx.beginPath();
-                    ctx.moveTo(burst.x1, burst.y1);
-                    ctx.lineTo(midX, midY);
-                    ctx.lineTo(burst.x2, burst.y2);
-                    ctx.stroke();
-                }
+                // Arc shot pulse at tower muzzle for clearer firing feedback.
+                const pulse = 1 - alpha;
+                const radius = 5 + (pulse * (7 + intensity));
+                ctx.strokeStyle = `rgba(168, 238, 255, ${0.52 * alpha})`;
+                ctx.lineWidth = 1.05 + intensity * 0.2;
+                ctx.beginPath();
+                ctx.arc(burst.x1, burst.y1, radius, 0, Math.PI * 2);
+                ctx.stroke();
                 continue;
             }
 
             // Bounce arcs stay cheaper: single segment and half-rate updates.
             if ((frameCount & 1) === 1) continue;
+            traceElectricArcPath(burst, geom, 3, 0.55);
             ctx.strokeStyle = `rgba(204, 244, 255, ${0.28 * alpha})`;
-            ctx.lineWidth = 1.0;
-            ctx.beginPath();
-            ctx.moveTo(burst.x1, burst.y1);
-            ctx.lineTo(burst.x2, burst.y2);
+            ctx.lineWidth = 0.9;
             ctx.stroke();
         }
         ctx.restore();
@@ -927,35 +977,32 @@ function drawArcLightningBursts() {
         if (!isWorldPointVisible(burst.x1, burst.y1, 140) && !isWorldPointVisible(burst.x2, burst.y2, 140)) continue;
         const alpha = Math.max(0, Math.min(1, burst.life / (burst.isChain ? 7 : 8)));
         const intensity = Math.max(1, Math.min(ARC_TOWER_RULES.maxBonus, burst.intensity || 1));
-        const jitter = 2 + intensity * 0.65;
+        const geom = getArcBurstGeometry(burst);
+        if (!geom) continue;
+        const points = heavyMode ? 4 : 7;
 
-        const dx = burst.x2 - burst.x1;
-        const dy = burst.y2 - burst.y1;
-        const len = Math.hypot(dx, dy);
-        if (len < 0.001) continue;
-
-        const nx = -dy / len;
-        const ny = dx / len;
-        const points = heavyMode ? 3 : 5;
-
-        ctx.beginPath();
-        ctx.moveTo(burst.x1, burst.y1);
-        for (let i = 1; i < points; i++) {
-            const t = i / points;
-            const bx = burst.x1 + dx * t;
-            const by = burst.y1 + dy * t;
-            const wave = Math.sin((frameCount * 0.4) + i * 2.5) * jitter;
-            ctx.lineTo(bx + nx * wave, by + ny * wave);
-        }
-        ctx.lineTo(burst.x2, burst.y2);
+        traceElectricArcPath(burst, geom, points, heavyMode ? 0.95 : 1.25);
 
         ctx.strokeStyle = `rgba(236, 250, 255, ${(heavyMode ? 0.55 : 0.7) * alpha})`;
         ctx.lineWidth = (heavyMode ? 0.9 : 1) + intensity * 0.15;
         ctx.stroke();
 
         if (!heavyMode) {
+            traceElectricArcPath(burst, geom, points + 1, 0.62);
             ctx.strokeStyle = `rgba(130, 220, 255, ${0.26 * alpha})`;
             ctx.lineWidth = 3 + intensity * 0.45;
+            ctx.stroke();
+        }
+
+        drawArcFork(burst, geom, alpha, intensity);
+
+        if (!burst.isChain) {
+            const pulse = 1 - alpha;
+            const radius = 6 + (pulse * (8 + intensity * 0.8));
+            ctx.strokeStyle = `rgba(188, 244, 255, ${0.48 * alpha})`;
+            ctx.lineWidth = 1.1 + intensity * 0.22;
+            ctx.beginPath();
+            ctx.arc(burst.x1, burst.y1, radius, 0, Math.PI * 2);
             ctx.stroke();
         }
     }
