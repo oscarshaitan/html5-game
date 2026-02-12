@@ -5,6 +5,36 @@
 // --- Constants & Config ---
 const GRID_SIZE = 40;
 const CANVAS_BG = '#050510';
+const DEBUG_UNLOCK_KEY = 'neonDefenseDebugUnlocked';
+const ZONE0_RADIUS_CELLS = 6;
+const PATHING_RULES = {
+    coreRepulsionRadius: 9,          // Grid cells
+    coreRepulsionStrength: 14,       // Extra path cost near core
+    nearCoreStraightRadius: 8,       // Grid cells
+    nearCoreTurnPenaltyBoost: 18,    // Extra turn penalty near core
+    mergeMinCoreDistance: 7          // Prefer merges away from core center
+};
+const HARDPOINT_RULES = {
+    slotSnapRadius: GRID_SIZE * 0.45,
+    core: {
+        count: 6,
+        radiusCells: ZONE0_RADIUS_CELLS,
+        damageMult: 1.08,
+        rangeMult: 1.06,
+        cooldownMult: 0.95,
+        sizeScale: 1.0
+    },
+    microRings: [
+        { count: 10, radiusCells: 13, angleOffset: Math.PI / 10 },
+        { count: 14, radiusCells: 17, angleOffset: 0 }
+    ],
+    micro: {
+        damageMult: 0.82,
+        rangeMult: 0.86,
+        cooldownMult: 1.12,
+        sizeScale: 0.78
+    }
+};
 
 const TOWERS = {
     basic: { cost: 50, range: 100, damage: 10, cooldown: 30, color: '#00f3ff', type: 'basic' },
@@ -23,6 +53,23 @@ window.addDebugMoney = function () {
     saveGame();
 }
 
+function setCommandCenterAccess(unlocked, persist = false) {
+    const securityPanel = document.getElementById('debug-security');
+    const commandCenter = document.getElementById('command-center');
+    if (!securityPanel || !commandCenter) return;
+
+    securityPanel.classList.toggle('hidden', unlocked);
+    commandCenter.classList.toggle('hidden', !unlocked);
+
+    if (persist) {
+        if (unlocked) {
+            localStorage.setItem(DEBUG_UNLOCK_KEY, 'true');
+        } else {
+            localStorage.removeItem(DEBUG_UNLOCK_KEY);
+        }
+    }
+}
+
 window.unlockDebug = async function () {
     const input = document.getElementById('debug-pass').value;
     const msgUint8 = new TextEncoder().encode(input);
@@ -32,8 +79,7 @@ window.unlockDebug = async function () {
 
     // Salted/Persistent protection check
     if (hashHex === '73ceb15f18bb0a313c8880abe54bf61a529dd8f1e75b084dd39926a1518d3d2f') {
-        document.getElementById('debug-security').classList.add('hidden');
-        document.getElementById('command-center').classList.remove('hidden');
+        setCommandCenterAccess(true, true);
     } else {
         // Feedback on failure
         const btn = document.querySelector('#debug-security button');
@@ -77,6 +123,7 @@ let enemies = [];
 let projectiles = [];
 let particles = [];
 let paths = []; // Array of arrays of points
+let hardpoints = [];
 
 let spawnQueue = []; // New: Array of enemy types to spawn
 let spawnTimer = 0;
@@ -105,6 +152,9 @@ function startShake(amt) {
 // --- Wave State ---
 let isWaveActive = false;
 let totalKills = { basic: 0, fast: 0, tank: 0, boss: 0, splitter: 0, mini: 0, bulwark: 0, shifter: 0 };
+let currentWaveTotalEnemies = 0;
+let currentWaveDistribution = null;
+let pendingRiftGenerations = 0;
 
 // --- Player Profile & Stats ---
 let playerName = localStorage.getItem('neonDefensePlayerName') || null;
@@ -554,6 +604,7 @@ window.onload = () => {
 
     // Init Audio UI from saved settings
     AudioEngine.updateSoundUI();
+    setCommandCenterAccess(localStorage.getItem(DEBUG_UNLOCK_KEY) === 'true');
 
     // Hotkeys
     window.addEventListener('keydown', (e) => {
@@ -893,16 +944,17 @@ function handleClick() {
 
     // Snap to grid
     const snap = snapToGrid(mouseX, mouseY);
+    const selectedHardpoint = getHardpointAtWorld(snap.x, snap.y);
 
     // --- Orbital Zone Selection (Tap empty space to highlight zone in Debug Mode) ---
     if (paths.length > 0) {
         const base = paths[0].points[paths[0].points.length - 1];
         const distToCenter = Math.hypot(mouseX - base.x, mouseY - base.y) / GRID_SIZE;
 
-        if (distToCenter < 6) {
+        if (distToCenter < ZONE0_RADIUS_CELLS) {
             selectedZone = 0;
         } else if (distToCenter < 60) {
-            const zone = Math.floor((distToCenter - 6) / 3) + 1;
+            const zone = Math.floor((distToCenter - ZONE0_RADIUS_CELLS) / 3) + 1;
             selectedZone = zone;
         } else {
             selectedZone = -1;
@@ -918,7 +970,8 @@ function handleClick() {
     }
 
     // Check if on a path (using grid cells)
-    if (!occupied) {
+    // Hardpoints are always buildable anchors, even if a path overlaps.
+    if (!occupied && !selectedHardpoint) {
         for (let rift of paths) {
             for (let p of rift.points) {
                 const pc = Math.floor(p.x / GRID_SIZE);
@@ -1093,6 +1146,194 @@ function snapToGrid(x, y) {
     };
 }
 
+function getCoreGridNode() {
+    if (paths.length > 0 && paths[0].points && paths[0].points.length > 0) {
+        const base = paths[0].points[paths[0].points.length - 1];
+        return {
+            c: Math.floor(base.x / GRID_SIZE),
+            r: Math.floor(base.y / GRID_SIZE)
+        };
+    }
+
+    const cols = Math.floor(width / GRID_SIZE);
+    const rows = Math.floor(height / GRID_SIZE);
+    return {
+        c: Math.floor(cols / 2),
+        r: Math.floor(rows / 2)
+    };
+}
+
+function addHardpointRing(target, keySet, centerC, centerR, cols, rows, count, radiusCells, type, angleOffset = 0) {
+    for (let i = 0; i < count; i++) {
+        const angle = angleOffset + (i * Math.PI * 2 / count);
+        const c = Math.round(centerC + Math.cos(angle) * radiusCells);
+        const r = Math.round(centerR + Math.sin(angle) * radiusCells);
+        if (c < 0 || c >= cols || r < 0 || r >= rows) continue;
+
+        const key = `${c},${r}`;
+        if (keySet.has(key)) continue;
+        keySet.add(key);
+
+        target.push({
+            id: `${type}-${target.length + 1}`,
+            type,
+            c,
+            r,
+            x: c * GRID_SIZE + GRID_SIZE / 2,
+            y: r * GRID_SIZE + GRID_SIZE / 2
+        });
+    }
+}
+
+function buildHardpoints() {
+    hardpoints = [];
+
+    const cols = Math.floor(width / GRID_SIZE);
+    const rows = Math.floor(height / GRID_SIZE);
+    if (cols <= 0 || rows <= 0) return;
+
+    const core = getCoreGridNode();
+    const keySet = new Set();
+
+    addHardpointRing(
+        hardpoints,
+        keySet,
+        core.c,
+        core.r,
+        cols,
+        rows,
+        HARDPOINT_RULES.core.count,
+        HARDPOINT_RULES.core.radiusCells,
+        'core',
+        Math.PI / 6
+    );
+
+    for (const ring of HARDPOINT_RULES.microRings) {
+        addHardpointRing(
+            hardpoints,
+            keySet,
+            core.c,
+            core.r,
+            cols,
+            rows,
+            ring.count,
+            ring.radiusCells,
+            'micro',
+            ring.angleOffset || 0
+        );
+    }
+}
+
+function getHardpointAtWorld(x, y, tolerance = HARDPOINT_RULES.slotSnapRadius) {
+    let best = null;
+    let minDist = Infinity;
+
+    for (const hp of hardpoints) {
+        const dist = Math.hypot(x - hp.x, y - hp.y);
+        if (dist <= tolerance && dist < minDist) {
+            minDist = dist;
+            best = hp;
+        }
+    }
+
+    return best;
+}
+
+function isGridNearHardpoint(c, r, radiusCells = 0, hardpointTypes = null) {
+    for (const hp of hardpoints) {
+        if (hardpointTypes && !hardpointTypes.includes(hp.type)) continue;
+        if (radiusCells <= 0) {
+            if (hp.c === c && hp.r === r) return true;
+            continue;
+        }
+
+        if (Math.hypot(c - hp.c, r - hp.r) <= radiusCells) return true;
+    }
+    return false;
+}
+
+function getCoreRepulsionPenalty(c, r, endNode) {
+    const distToCore = Math.hypot(c - endNode.c, r - endNode.r);
+    if (distToCore >= PATHING_RULES.coreRepulsionRadius) return 0;
+    const t = 1 - (distToCore / PATHING_RULES.coreRepulsionRadius);
+    return PATHING_RULES.coreRepulsionStrength * t * t;
+}
+
+function normalizeAngleRadians(angle) {
+    const twoPi = Math.PI * 2;
+    let a = angle % twoPi;
+    if (a < 0) a += twoPi;
+    return a;
+}
+
+function getCoreGapSectors(coreC, coreR) {
+    const coreSlots = hardpoints
+        .filter(hp => hp.type === 'core')
+        .map(hp => ({ angle: normalizeAngleRadians(Math.atan2(hp.r - coreR, hp.c - coreC)) }))
+        .sort((a, b) => a.angle - b.angle);
+
+    if (coreSlots.length < 2) return [];
+
+    const sectors = [];
+    for (let i = 0; i < coreSlots.length; i++) {
+        const startAngle = coreSlots[i].angle;
+        let endAngle = coreSlots[(i + 1) % coreSlots.length].angle;
+        if (endAngle <= startAngle) endAngle += Math.PI * 2;
+        sectors.push({
+            index: i,
+            startAngle,
+            endAngle,
+            centerAngle: normalizeAngleRadians((startAngle + endAngle) / 2)
+        });
+    }
+    return sectors;
+}
+
+function getCoreGapIndexForCell(c, r, coreC, coreR, gapSectors) {
+    if (!gapSectors.length) return null;
+    if (c === coreC && r === coreR) return null;
+
+    const angle = normalizeAngleRadians(Math.atan2(r - coreR, c - coreC));
+    for (const sector of gapSectors) {
+        let testAngle = angle;
+        if (testAngle < sector.startAngle) testAngle += Math.PI * 2;
+        if (testAngle >= sector.startAngle && testAngle < sector.endAngle) {
+            return sector.index;
+        }
+    }
+    return gapSectors[0].index;
+}
+
+function getCoreEntryGapFromPath(path, coreC, coreR, gapSectors, zone0Radius = ZONE0_RADIUS_CELLS) {
+    if (!path || !path.points || path.points.length < 2 || !gapSectors.length) return null;
+
+    let entryCell = null;
+    for (let i = 1; i < path.points.length; i++) {
+        const prev = path.points[i - 1];
+        const curr = path.points[i];
+        const prevC = Math.floor(prev.x / GRID_SIZE);
+        const prevR = Math.floor(prev.y / GRID_SIZE);
+        const currC = Math.floor(curr.x / GRID_SIZE);
+        const currR = Math.floor(curr.y / GRID_SIZE);
+        const prevDist = Math.hypot(prevC - coreC, prevR - coreR);
+        const currDist = Math.hypot(currC - coreC, currR - coreR);
+        if (prevDist >= zone0Radius && currDist < zone0Radius) {
+            entryCell = { c: prevC, r: prevR };
+            break;
+        }
+    }
+
+    if (!entryCell) {
+        const beforeCore = path.points[path.points.length - 2];
+        entryCell = {
+            c: Math.floor(beforeCore.x / GRID_SIZE),
+            r: Math.floor(beforeCore.y / GRID_SIZE)
+        };
+    }
+
+    return getCoreGapIndexForCell(entryCell.c, entryCell.r, coreC, coreR, gapSectors);
+}
+
 function calculatePath() {
     paths = [];
 
@@ -1104,6 +1345,7 @@ function calculatePath() {
     const centerC = Math.floor(cols / 2);
     const centerR = Math.floor(rows / 2);
     const endNode = { c: centerC, r: centerR };
+    buildHardpoints();
 
     // Start: Random point >= 10 units away
     let startC, startR;
@@ -1119,7 +1361,9 @@ function calculatePath() {
         if (dist >= 10) {
             // Also ensure it's not ON the center
             if (startC !== centerC || startR !== centerR) {
-                validStart = true;
+                if (!isGridNearHardpoint(startC, startR, 0)) {
+                    validStart = true;
+                }
             }
         }
         attempts++;
@@ -1130,12 +1374,14 @@ function calculatePath() {
         startC = 0; startR = 0;
     }
 
-    // Find path
-    // Pass empty towers list since this is initial generation
-    const pathPoints = findPathOnGrid({ c: startC, r: startR }, endNode, []);
+    // Find path while protecting all hardpoint slots (core + micro).
+    const hardpointObstacles = hardpoints.map(hp => ({ x: hp.c, y: hp.r }));
+    const pathPoints = findPathOnGrid({ c: startC, r: startR }, endNode, hardpointObstacles);
 
     if (pathPoints && pathPoints.length > 0) {
-        paths.push({ points: pathPoints, level: 1 });
+        const startDist = Math.hypot(startC - centerC, startR - centerR);
+        const startZone = Math.max(1, Math.min(15, Math.floor((startDist - ZONE0_RADIUS_CELLS) / 3) + 1));
+        paths.push({ points: pathPoints, level: 1, zone: startZone });
     } else {
         // Fallback manual path if something fails
         console.warn("Failed to generate random path, using fallback");
@@ -1144,10 +1390,13 @@ function calculatePath() {
                 { x: 20, y: 20 },
                 { x: width / 2, y: height / 2 }
             ],
-            level: 1
+            level: 1,
+            zone: 1
         };
         paths.push(fallbackPath);
     }
+
+    buildHardpoints();
 }
 
 // --- Game Control ---
@@ -1277,9 +1526,142 @@ window.toggleWavePanel = function () {
     }
 };
 
+function getWaveIntelTags(nextWave, upgradedRiftsCount, mutatedRiftsCount, maxTier) {
+    const tags = [];
+
+    if (nextWave % 10 === 0) tags.push({ label: "BOSS", color: "var(--neon-pink)" });
+    if (nextWave > 50 && nextWave % 5 === 0 && nextWave % 10 !== 0) tags.push({ label: "SURPRISE_BOSS", color: "#ffcc66" });
+    if (nextWave >= 20) tags.push({ label: "TAUNT", color: "#fcee0a" });
+    if (nextWave >= 30) tags.push({ label: "STEALTH", color: "#ff66cc" });
+    if (nextWave % 20 === 0) tags.push({ label: "MUT_EVENT", color: "#ffffff" });
+    if (mutatedRiftsCount > 0) tags.push({ label: `MUTx${mutatedRiftsCount}`, color: "#ffffff" });
+    if (upgradedRiftsCount > 0) tags.push({ label: `T${maxTier}`, color: "var(--neon-blue)" });
+
+    return tags;
+}
+
+function createEmptyEnemyDistribution() {
+    return {
+        basic: 0,
+        fast: 0,
+        tank: 0,
+        splitter: 0,
+        bulwark: 0,
+        shifter: 0,
+        boss: 0
+    };
+}
+
+function getEnemyCountsFromQueue(queue) {
+    const dist = createEmptyEnemyDistribution();
+    for (const t of queue) {
+        const key = (t || '').toLowerCase();
+        if (dist[key] !== undefined) dist[key]++;
+    }
+    return dist;
+}
+
+function distributeByWeights(total, weights) {
+    const result = {};
+    let used = 0;
+    const remainders = [];
+
+    for (const w of weights) {
+        const raw = total * w.weight;
+        const base = Math.floor(raw);
+        result[w.type] = base;
+        used += base;
+        remainders.push({ type: w.type, frac: raw - base });
+    }
+
+    let leftover = total - used;
+    remainders.sort((a, b) => b.frac - a.frac);
+    for (let i = 0; i < leftover; i++) {
+        const item = remainders[i % remainders.length];
+        result[item.type] = (result[item.type] || 0) + 1;
+    }
+
+    return result;
+}
+
+function getPredictedWaveDistribution(nextWave) {
+    const baseCount = 5 + Math.floor(nextWave * 2.5);
+    const dist = createEmptyEnemyDistribution();
+
+    if (nextWave < 3) {
+        dist.basic = baseCount;
+    } else if (nextWave < 5) {
+        const split = distributeByWeights(baseCount, [
+            { type: 'basic', weight: 0.7 },
+            { type: 'fast', weight: 0.3 }
+        ]);
+        Object.assign(dist, split);
+    } else if (nextWave < 10) {
+        const fixedTank = (nextWave % 5 === 0) ? Math.min(2, baseCount) : 0;
+        const remaining = baseCount - fixedTank;
+        const split = distributeByWeights(remaining, [
+            { type: 'basic', weight: 0.75 },
+            { type: 'fast', weight: 0.2 },
+            { type: 'tank', weight: 0.05 }
+        ]);
+        Object.assign(dist, split);
+        dist.tank += fixedTank;
+    } else {
+        let weights = [
+            { type: 'basic', weight: 0.3 },
+            { type: 'fast', weight: 0.5 },
+            { type: 'tank', weight: 0.2 }
+        ];
+
+        if (nextWave >= 15) {
+            weights = [
+                { type: 'basic', weight: 0.3 },
+                { type: 'fast', weight: 0.2 },
+                { type: 'tank', weight: 0.2 },
+                { type: 'splitter', weight: 0.3 }
+            ];
+        }
+        if (nextWave >= 20) {
+            weights = [
+                { type: 'basic', weight: 0.3 },
+                { type: 'fast', weight: 0.2 },
+                { type: 'tank', weight: 0.2 },
+                { type: 'splitter', weight: 0.15 },
+                { type: 'bulwark', weight: 0.15 }
+            ];
+        }
+        if (nextWave >= 30) {
+            weights = [
+                { type: 'basic', weight: 0.3 },
+                { type: 'fast', weight: 0.2 },
+                { type: 'tank', weight: 0.2 },
+                { type: 'splitter', weight: 0.15 },
+                { type: 'bulwark', weight: 0.07 },
+                { type: 'shifter', weight: 0.08 }
+            ];
+        }
+
+        const split = distributeByWeights(baseCount, weights);
+        Object.assign(dist, split);
+    }
+
+    if (nextWave % 10 === 0) dist.boss += 1;
+    return dist;
+}
+
+function renderEnemyDistributionHTML(distribution) {
+    const order = ['basic', 'fast', 'tank', 'splitter', 'bulwark', 'shifter', 'boss'];
+    let html = '';
+    for (const type of order) {
+        const count = distribution[type] || 0;
+        if (!count) continue;
+        html += `<div class="enemy-count-group" title="${type.toUpperCase()}"><div class="enemy-icon-small icon-${type}"></div>${count}</div>`;
+    }
+    return html || `<div class="enemy-count-group">No data</div>`;
+}
+
 function updateWavePanel() {
     const nextWave = wave;
-    const baseCount = 5 + Math.floor(nextWave * 2.5);
 
     // Rift Stats
     const totalRifts = paths.length;
@@ -1287,51 +1669,34 @@ function updateWavePanel() {
     const mutatedRiftsCount = paths.filter(p => p.mutation).length;
     const maxTier = paths.reduce((max, p) => Math.max(max, p.level || 1), 1);
 
-    document.getElementById('intel-count').innerText = baseCount;
+    const riftCountEl = document.getElementById('intel-rifts');
+    if (riftCountEl) riftCountEl.innerText = totalRifts;
 
-    // Replace Mutant Chance with Rift Strategy Info
+    // Mutation / anomaly readiness
     const mutantChanceEl = document.getElementById('intel-mutant-chance');
-    if (mutatedRiftsCount > 0) {
-        mutantChanceEl.innerHTML = `<span style="color: #fff; font-weight: bold;">${mutatedRiftsCount} SECTORS MUTATED</span>`;
+    if (nextWave % 20 === 0) {
+        mutantChanceEl.innerHTML = `<span style="color: #fff; font-weight: bold;">MUTATION EVENT THIS WAVE</span>`;
+    } else if (mutatedRiftsCount > 0) {
+        mutantChanceEl.innerHTML = `<span style="color: #fff; font-weight: bold;">${mutatedRiftsCount} ACTIVE MUTATION SECTOR(S)</span>`;
     } else {
-        mutantChanceEl.innerText = "NO ANOMALIES";
+        const wavesToMutation = 20 - (nextWave % 20);
+        mutantChanceEl.innerText = `Stable | Next mutation check in ${wavesToMutation} wave(s)`;
     }
 
-    const threatTitle = nextWave % 10 === 0 ? "CRITICAL (BOSS)" : (nextWave % 5 === 0 ? "ELEVATED" : "NORMAL");
+    const tags = getWaveIntelTags(nextWave, upgradedRiftsCount, mutatedRiftsCount, maxTier);
+    const threatScore = tags.length + (nextWave >= 50 ? 1 : 0) + (upgradedRiftsCount > 0 ? 1 : 0);
+    const threatTitle = threatScore >= 7 ? "CRITICAL" : (threatScore >= 5 ? "HIGH" : (threatScore >= 3 ? "ELEVATED" : "NORMAL"));
     const threatSpan = document.getElementById('intel-threat');
     threatSpan.innerText = threatTitle;
-    threatSpan.style.color = nextWave % 10 === 0 ? "var(--neon-pink)" : (nextWave % 5 === 0 ? "#ffcc00" : "white");
+    threatSpan.style.color = threatTitle === "CRITICAL" ? "var(--neon-pink)" : (threatTitle === "HIGH" ? "#ff7a00" : (threatTitle === "ELEVATED" ? "#ffcc00" : "white"));
 
-    // Add extra info to the panel
-    const specialList = document.getElementById('intel-special-list');
-    if (!specialList) return; // Guard clause for missing element
+    const distributionEl = document.getElementById('intel-distribution');
+    if (!distributionEl) return;
 
-    specialList.innerHTML = "";
-
-    if (nextWave % 10 === 0) specialList.innerHTML += "<li>Guaranteed BOSS arrival</li>";
-    if (nextWave % 20 === 0) specialList.innerHTML += `<li style="color: #fff; font-weight: bold;">>>> INCOMING MUTATION EVENT <<<</li>`;
-
-    // Show Upgrade Probability (Post Wave 50)
-    if (nextWave >= 50) {
-        specialList.innerHTML += `<li style="color: #00f3ff; font-weight: bold;">10% Chance for SECTOR EVOLUTION (Upgrade)</li>`;
-    }
-
-    if (upgradedRiftsCount > 0) {
-        specialList.innerHTML += `<li style="color: var(--neon-pink)">${upgradedRiftsCount} VETERAN RIFTS (Max T${maxTier})</li>`;
-        specialList.innerHTML += `<li>T${maxTier} Boosts: HP x${(1 + (maxTier - 1) * 0.5).toFixed(1)}</li>`;
-    }
-
-    if (mutatedRiftsCount > 0) {
-        paths.filter(p => p.mutation).forEach(p => {
-            specialList.innerHTML += `<li style="color: ${p.mutation.color}">SECTOR ${p.mutation.name} ACTIVE</li>`;
-        });
-    }
-
-    if (nextWave > 50 && nextWave % 5 === 0 && nextWave % 10 !== 0) {
-        specialList.innerHTML += "<li>SURPRISE BOSS possible (25%)</li>";
-    }
-
-    if (specialList.innerHTML === "") specialList.innerHTML = "<li>All monitoring clear.</li>";
+    const distribution = (isWaveActive && currentWaveDistribution)
+        ? currentWaveDistribution
+        : getPredictedWaveDistribution(nextWave);
+    distributionEl.innerHTML = renderEnemyDistributionHTML(distribution);
 }
 
 window.toggleMute = function () {
@@ -1354,10 +1719,14 @@ window.saveGame = function () {
         towers: towers.map(t => ({
             type: t.type, x: t.x, y: t.y, level: t.level,
             damage: t.damage, range: t.range, cooldown: t.cooldown, maxCooldown: t.maxCooldown,
-            color: t.color, cost: t.cost, totalCost: t.totalCost
+            color: t.color, cost: t.cost, totalCost: t.totalCost,
+            hardpointId: t.hardpointId || null,
+            hardpointType: t.hardpointType || null,
+            hardpointScale: t.hardpointScale || 1
         })),
         baseLevel, baseCooldown, energy,
-        playerName, totalKills
+        playerName, totalKills,
+        pendingRiftGenerations
     };
 
     localStorage.setItem('neonDefenseSave', JSON.stringify(data));
@@ -1385,6 +1754,7 @@ window.loadGame = function () {
             return p;
         });
     }
+    buildHardpoints();
 
     baseLevel = data.baseLevel || 0;
     baseCooldown = data.baseCooldown || 0;
@@ -1392,10 +1762,12 @@ window.loadGame = function () {
     playerName = data.playerName || playerName || localStorage.getItem('neonDefensePlayerName') || null;
     if (playerName) localStorage.setItem('neonDefensePlayerName', playerName);
     totalKills = data.totalKills || { basic: 0, fast: 0, tank: 0, boss: 0, splitter: 0, mini: 0, bulwark: 0, shifter: 0 };
+    pendingRiftGenerations = data.pendingRiftGenerations || 0;
 
     // Restore towers
     towers = (data.towers || []).map(t => ({
         ...t,
+        hardpointScale: t.hardpointScale || 1,
         cooldown: t.cooldown || 0,
         maxCooldown: t.maxCooldown || t.cooldown || 30
     }));
@@ -1685,8 +2057,23 @@ function resetGameLogic() {
     updateUI();
 }
 
+function getExpectedRiftCountByWave(currentWave) {
+    let scheduled = 0;
+    for (let w = 2; w <= currentWave; w++) {
+        if (w <= 50) {
+            if ((w - 1) % 10 === 0) scheduled++;
+        } else {
+            if ((w - 1) % 5 === 0) scheduled++;
+        }
+    }
+    return 1 + scheduled; // Initial path + scheduled additions
+}
+
 function startPrepPhase() {
     isWaveActive = false;
+    currentWaveTotalEnemies = 0;
+    currentWaveDistribution = null;
+    pendingRiftGenerations = 0;
     // Don't reset money/lives/towers here, just timer
     prepTimer = 30;
     spawnQueue = []; // Clear any remaining enemies from previous wave if it ended prematurely
@@ -1704,11 +2091,33 @@ function startPrepPhase() {
     // New Path Generation
     // Up to Wave 50: Every 10 waves (11, 21, 31, 41, 51)
     // After Wave 50: Every 5 waves (56, 61, 66...)
+    // Reconcile expected-vs-actual rifts so missed placements are re-queued.
     if (wave > 1) {
-        if (wave <= 50) {
-            if ((wave - 1) % 10 === 0) generateNewPath();
-        } else {
-            if ((wave - 1) % 5 === 0) generateNewPath();
+        const expectedRifts = getExpectedRiftCountByWave(wave);
+        const missingRifts = Math.max(0, expectedRifts - paths.length);
+        if (missingRifts > pendingRiftGenerations) {
+            pendingRiftGenerations = missingRifts;
+        }
+    }
+
+    if (pendingRiftGenerations > 0) {
+        let attempts = 0;
+        let failStreak = 0;
+        const maxAttempts = Math.min(420, 24 + pendingRiftGenerations * 12);
+        while (pendingRiftGenerations > 0 && attempts < maxAttempts) {
+            const relaxedLevel = failStreak >= 9 ? 2 : (failStreak >= 3 ? 1 : 0);
+            const aggressivePlacement = failStreak >= 14;
+            const created = generateNewPath({ relaxedLevel, aggressivePlacement, suppressLogs: true });
+            if (created) {
+                pendingRiftGenerations--;
+                failStreak = 0;
+            } else {
+                failStreak++;
+            }
+            attempts++;
+        }
+        if (pendingRiftGenerations > 0) {
+            console.warn(`[RIFT BACKLOG] Pending generations: ${pendingRiftGenerations}`);
         }
     }
 }
@@ -1717,13 +2126,14 @@ window.skipPrep = function () {
     startWave();
 };
 
-function startWave() {
+function startWave(options = {}) {
+    const { silent = false, persist = true, tutorialProgress = true } = options;
     isWaveActive = true;
     prepTimer = 0;
     document.getElementById('skip-btn').style.display = 'none';
 
     // Tutorial Step Advance
-    if (tutorialActive && tutorialStep === 4) {
+    if (tutorialProgress && tutorialActive && tutorialStep === 4) {
         nextTutorialStep();
     }
 
@@ -1747,7 +2157,7 @@ function startWave() {
         updateWavePanel();
     }
 
-    saveGame(); // Save on wave start
+    if (persist) saveGame(); // Save on wave start
 
     waveTimer = 0;
     spawnTimer = 0;
@@ -1760,8 +2170,10 @@ function startWave() {
     }
 
     // Play wave start sound
-    AudioEngine.init();
-    AudioEngine.playSFX('build');
+    if (!silent) {
+        AudioEngine.init();
+        AudioEngine.playSFX('build');
+    }
 
     for (let i = 0; i < baseCount; i++) {
         let type = 'basic';
@@ -1802,6 +2214,9 @@ function startWave() {
             AudioEngine.playSFX('hit');
         }
     }
+
+    currentWaveTotalEnemies = spawnQueue.length;
+    currentWaveDistribution = getEnemyCountsFromQueue(spawnQueue);
 
     updateUI();
 }
@@ -1961,7 +2376,12 @@ function finishTutorial() {
     showNextHint();
 }
 
-function generateNewPath() {
+function generateNewPath(options = {}) {
+    const relaxedLevel = Math.max(0, Math.min(2, Number(options.relaxedLevel || 0)));
+    const aggressivePlacement = !!options.aggressivePlacement;
+    const suppressLogs = !!options.suppressLogs;
+    if (!hardpoints.length) buildHardpoints();
+
     // Target: Center (Base)
     const cols = Math.floor(width / GRID_SIZE);
     const rows = Math.floor(height / GRID_SIZE);
@@ -1990,25 +2410,100 @@ function generateNewPath() {
         return false;
     };
 
-    // 1. Pick Best Candidate Start (Sequential Orbital Zoning + Body-Relative Dispersion)
+    // 1. Pick Best Candidate Start (Wave-biased orbital zoning + body-relative dispersion)
     let bestStartNode = null;
     let foundZone = -1;
+    const cornerDistances = [
+        Math.hypot(centerC, centerR),
+        Math.hypot(cols - 1 - centerC, centerR),
+        Math.hypot(centerC, rows - 1 - centerR),
+        Math.hypot(cols - 1 - centerC, rows - 1 - centerR)
+    ];
+    const maxRadiusByMap = Math.max(...cornerDistances);
+    const mapZoneCap = Math.max(3, Math.floor((maxRadiusByMap - ZONE0_RADIUS_CELLS) / 3));
+    const maxZone = Math.max(3, Math.min(15, mapZoneCap));
+    const orbitalDensity = 0.62; // Softer 2n^2-inspired shell capacity.
+    const getOrbitalShellCapacity = (zone) => Math.max(1, Math.round((2 * zone * zone) * orbitalDensity));
+    const riftLoadTarget = Math.max(paths.length + 1, getExpectedRiftCountByWave(wave));
+    const zoneCounts = new Array(maxZone + 1).fill(0);
+    for (const p of paths) {
+        const z = Math.max(1, Math.min(maxZone, p.zone || 1));
+        zoneCounts[z]++;
+    }
 
-    // Electron Shell Capacities: 2, 8, 18, 32... (2 * n^2)
-    // We search through zones [6-9, 9-12, 12-15...] in order
-    for (let zoneIndex = 1; zoneIndex <= 15; zoneIndex++) {
+    let targetZone = 1;
+    let cumulativeCapacity = 0;
+    for (let z = 1; z <= maxZone; z++) {
+        cumulativeCapacity += getOrbitalShellCapacity(z);
+        targetZone = z;
+        if (cumulativeCapacity >= riftLoadTarget) break;
+    }
+
+    const desiredZoneCounts = new Array(maxZone + 1).fill(0);
+    let remainingDesired = riftLoadTarget;
+    for (let z = 1; z <= targetZone && remainingDesired > 0; z++) {
+        const cap = getOrbitalShellCapacity(z);
+        const desired = Math.min(cap, remainingDesired);
+        desiredZoneCounts[z] = desired;
+        remainingDesired -= desired;
+    }
+    const baseMinRiftSpacing = wave < 120 ? 0.95 : (wave < 300 ? 0.85 : (wave < 700 ? 0.75 : 0.65));
+    const minRiftSpacing = aggressivePlacement ? 0 : Math.max(0.2, baseMinRiftSpacing - (relaxedLevel * 0.35));
+    const candidateAttempts = aggressivePlacement
+        ? Math.min(1400, 360 + Math.floor(wave / 6) + (relaxedLevel * 320))
+        : Math.min(960, 180 + Math.floor(wave / 8) + (relaxedLevel * 260));
+    const spawnHardpointBuffer = 0;
+    const mergeHardpointBuffer = 0;
+
+    // Keep minimum tactical presence in inner shells so core-adjacent play doesn't collapse.
+    const innerZoneTargets = {
+        1: riftLoadTarget >= 8 ? 2 : 1,
+        2: riftLoadTarget >= 16 ? 2 : 0,
+        3: riftLoadTarget >= 24 ? 2 : 0
+    };
+    let forcedZone = null;
+    let strongestDeficit = 0;
+    const searchZoneLimit = Math.min(maxZone, targetZone + (aggressivePlacement ? 2 : 1));
+    for (let z = 1; z <= searchZoneLimit; z++) {
+        const floorTarget = innerZoneTargets[z] || 0;
+        const desired = Math.max(floorTarget, desiredZoneCounts[z] || 0);
+        const deficit = desired - (zoneCounts[z] || 0);
+        if (deficit > strongestDeficit) {
+            strongestDeficit = deficit;
+            forcedZone = z;
+        }
+    }
+
+    // Weighted zone ordering: still wave-biased outward, but with randomness for organic layouts.
+    const zoneOrder = [];
+    if (forcedZone !== null) zoneOrder.push(forcedZone);
+    const weightedZones = [];
+    for (let z = 1; z <= searchZoneLimit; z++) {
+        if (z === forcedZone) continue;
+        const distanceFromTarget = Math.abs(z - targetZone);
+        const desired = Math.max(innerZoneTargets[z] || 0, desiredZoneCounts[z] || 0);
+        const deficit = Math.max(0, desired - (zoneCounts[z] || 0));
+        const deficitBias = deficit > 0 ? -Math.min(2.8, 0.85 + deficit * 0.55) : 0;
+        const innerBias = z <= 3 ? -0.25 : 0;
+        const randomness = Math.random() * 1.1;
+        const score = (distanceFromTarget * 0.75) + randomness + innerBias + deficitBias;
+        weightedZones.push({ z, score });
+    }
+    weightedZones.sort((a, b) => a.score - b.score);
+    zoneOrder.push(...weightedZones.map(item => item.z));
+
+    for (const zoneIndex of zoneOrder) {
         // Electron Shell Capacities: Tightened for inner zones
-        const zoneRiftCount = paths.filter(p => p.zone === zoneIndex).length;
-        const zoneCapacity = zoneIndex === 1 ? 1 : zoneIndex + 1; // Zone 1: 1, Zone 2: 3, Zone 3: 4
+        const zoneRiftCount = zoneCounts[zoneIndex] || 0;
+        const zoneCapacity = Math.max(innerZoneTargets[zoneIndex] || 0, getOrbitalShellCapacity(zoneIndex));
+        const relaxedExtraCapacity = aggressivePlacement ? 40 : (relaxedLevel === 0 ? 4 : (relaxedLevel === 1 ? 10 : 20));
+        if (zoneRiftCount >= (zoneCapacity + relaxedExtraCapacity)) continue; // Soft cap to preserve organic spread.
 
-        if (zoneRiftCount >= zoneCapacity) continue; // Orbit is full!
+        const innerR = ZONE0_RADIUS_CELLS + (zoneIndex - 1) * 3;
+        const outerR = ZONE0_RADIUS_CELLS + zoneIndex * 3;
+        const zoneCandidates = [];
 
-        let maxMinDistForZone = -Infinity;
-        const innerR = 6 + (zoneIndex - 1) * 3;
-        const outerR = 6 + zoneIndex * 3;
-        let zoneHasCandidates = false;
-
-        for (let i = 0; i < 50; i++) {
+        for (let i = 0; i < candidateAttempts; i++) {
             // Pick random point in ring [innerR, outerR]
             const angle = Math.random() * Math.PI * 2;
             const dist = innerR + Math.random() * (outerR - innerR);
@@ -2018,6 +2513,8 @@ function generateNewPath() {
             // Bounds check
             if (c < 0 || c >= cols || r < 0 || r >= rows) continue;
             if (isLocationOnPath(c, r)) continue;
+            // Keep rift spawns away from all hardpoint anchors (core + micro).
+            if (isGridNearHardpoint(c, r, spawnHardpointBuffer)) continue;
 
             // Dispersion & Spacing: check distance to ALL points on ALL paths
             let minDist = Infinity;
@@ -2030,8 +2527,8 @@ function generateNewPath() {
                     for (const pt of path.points) {
                         const d = Math.hypot(c - (pt.x / GRID_SIZE), r - (pt.y / GRID_SIZE));
                         if (d < minDist) minDist = d;
-                        // INCREASED Global Spacing: 2.5-unit absolute spacing constraint between rifts
-                        if (d < 2.5) {
+                        // Progressive spacing relaxation lets late-game keep expanding outward.
+                        if (minRiftSpacing > 0 && d < minRiftSpacing) {
                             meetsGlobalSpacing = false;
                             break;
                         }
@@ -2042,22 +2539,46 @@ function generateNewPath() {
 
             if (!meetsGlobalSpacing) continue;
 
-            zoneHasCandidates = true;
-            if (minDist > maxMinDistForZone) {
-                maxMinDistForZone = minDist;
-                bestStartNode = { c, r };
-            }
+            zoneCandidates.push({ c, r, minDist });
         }
 
-        if (zoneHasCandidates && bestStartNode) {
+        if (zoneCandidates.length > 0) {
+            // Pick from top candidates with slight randomness to avoid mechanical ring patterns.
+            zoneCandidates.sort((a, b) => b.minDist - a.minDist);
+            const topSlice = zoneCandidates.slice(0, Math.min(zoneCandidates.length, 16));
+            const pickIndex = Math.floor(Math.pow(Math.random(), 1.15) * topSlice.length);
+            const picked = topSlice[Math.max(0, Math.min(topSlice.length - 1, pickIndex))];
+            bestStartNode = { c: picked.c, r: picked.r };
             foundZone = zoneIndex;
             break; // Found valid spot in this zone, stop searching higher zones
         }
     }
 
+    if (!bestStartNode && relaxedLevel >= 2) {
+        // Emergency fallback for ultra-late map saturation.
+        const emergencyAttempts = aggressivePlacement ? 2200 : 1200;
+        for (let i = 0; i < emergencyAttempts; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 10 + Math.random() * 48;
+            const c = Math.round(centerC + Math.cos(angle) * dist);
+            const r = Math.round(centerR + Math.sin(angle) * dist);
+            if (c < 0 || c >= cols || r < 0 || r >= rows) continue;
+            if (isLocationOnPath(c, r)) continue;
+            if (isGridNearHardpoint(c, r, 0.5)) continue;
+            bestStartNode = { c, r };
+            foundZone = Math.max(1, Math.min(maxZone, Math.floor((dist - ZONE0_RADIUS_CELLS) / 3) + 1));
+            break;
+        }
+    }
+
     if (!bestStartNode) {
-        console.warn("[MISSION FAILED] Orbital Saturation: No valid rift locations found.");
-        return;
+        if (relaxedLevel < 2) {
+            return generateNewPath({ ...options, relaxedLevel: relaxedLevel + 1, suppressLogs: true });
+        }
+        if (!suppressLogs) {
+            console.warn("[MISSION FAILED] Orbital Saturation: No valid rift locations found.");
+        }
+        return false;
     }
 
     const startNode = bestStartNode;
@@ -2066,51 +2587,12 @@ function generateNewPath() {
     let targetNode = endNode;
     let mergePathIndex = -1;
     let mergePointIndex = -1;
-
-    // Probability of Direct Core Mission: Aggressively decayed to favor merging
-    const directProb = 0.5 / (foundZone * foundZone); // Zone 1: 50%, Zone 2: 12.5%
-    const isDirectMission = Math.random() < directProb;
-
-    const minExpansionDist = 12;
-
-    if (!isDirectMission) {
-        let minMergeDist = Infinity;
-
-        for (let i = 0; i < paths.length; i++) {
-            const path = paths[i];
-            for (let j = 0; j < path.points.length; j++) {
-                const pt = path.points[j];
-                const pc = Math.floor(pt.x / GRID_SIZE);
-                const pr = Math.floor(pt.y / GRID_SIZE);
-
-                const dToSpawn = Math.hypot(startNode.c - pc, startNode.r - pr);
-
-                // Must meet minimum length to prevent tiny stub rifts
-                if (dToSpawn < minExpansionDist) continue;
-
-                // Pick the absolute closest point on any path
-                if (dToSpawn < minMergeDist) {
-                    minMergeDist = dToSpawn;
-                    targetNode = { c: pc, r: pr };
-                    mergePathIndex = i;
-                    mergePointIndex = j;
-                }
-            }
-        }
-
-        // If no valid merge point found, fallback to base
-        if (mergePathIndex === -1) {
-            targetNode = endNode;
-        }
-    }
+    let newPathPoints = null;
 
     // 3. GENERATE PATH
     const obstacles = [];
+    const allowedObstacleKeys = new Set();
     for (let i = 0; i < paths.length; i++) {
-        // If merging, we don't treat the target path as an obstacle 
-        // because we need to link into its points.
-        if (i === mergePathIndex) continue;
-
         for (let pt of paths[i].points) {
             obstacles.push({
                 x: Math.floor(pt.x / GRID_SIZE),
@@ -2118,50 +2600,268 @@ function generateNewPath() {
             });
         }
     }
-
-    const newPathPoints = findPathOnGrid(startNode, targetNode, obstacles);
-
-    if (newPathPoints) {
-        if (mergePathIndex !== -1) {
-            const targetPath = paths[mergePathIndex];
-            const continuation = targetPath.points.slice(mergePointIndex + 1);
-            newPathPoints.push(...continuation);
-        }
-
-        paths.push({ points: newPathPoints, level: 1, zone: foundZone });
-
-        // DESTROY TOWERS ON PATH
-        for (let i = towers.length - 1; i >= 0; i--) {
-            const t = towers[i];
-            const tolerance = GRID_SIZE / 2;
-            let hit = false;
-
-            for (let j = 0; j < newPathPoints.length - 1; j++) {
-                const p1 = newPathPoints[j];
-                const p2 = newPathPoints[j + 1];
-                if (Math.abs(p1.y - p2.y) < 1) { // Horizontal
-                    if (Math.abs(t.y - p1.y) < tolerance && t.x >= Math.min(p1.x, p2.x) - tolerance && t.x <= Math.max(p1.x, p2.x) + tolerance) { hit = true; break; }
-                } else { // Vertical
-                    if (Math.abs(t.x - p1.x) < tolerance && t.y >= Math.min(p1.y, p2.y) - tolerance && t.y <= Math.max(p1.y, p2.y) + tolerance) { hit = true; break; }
-                }
-            }
-
-            if (hit) {
-                money += Math.floor((t.cost * t.level) * 0.7);
-                createParticles(t.x, t.y, '#fff', 10);
-                towers.splice(i, 1);
-            }
-        }
-        updateUI();
+    // Hardpoint cells are protected anchors and should not be used by new rift paths.
+    for (const hp of hardpoints) {
+        obstacles.push({ x: hp.c, y: hp.r });
     }
+
+    const obstacleSet = new Set(obstacles.map(ob => `${ob.x},${ob.y}`));
+    const hasOpenApproach = (c, r) => {
+        const neighbors = [
+            { c: c, r: r - 1 },
+            { c: c + 1, r: r },
+            { c: c, r: r + 1 },
+            { c: c - 1, r: r }
+        ];
+        for (const n of neighbors) {
+            if (n.c < 0 || n.c >= cols || n.r < 0 || n.r >= rows) continue;
+            if (!obstacleSet.has(`${n.c},${n.r}`)) return true;
+        }
+        return false;
+    };
+
+    const coreGapSectors = getCoreGapSectors(centerC, centerR);
+    const pathGapByIndex = new Array(paths.length).fill(null);
+    const gapUsage = new Map();
+    for (let i = 0; i < paths.length; i++) {
+        const gap = getCoreEntryGapFromPath(paths[i], centerC, centerR, coreGapSectors, ZONE0_RADIUS_CELLS);
+        pathGapByIndex[i] = gap;
+        if (gap !== null) gapUsage.set(gap, (gapUsage.get(gap) || 0) + 1);
+    }
+    const startGap = getCoreGapIndexForCell(startNode.c, startNode.r, centerC, centerR, coreGapSectors);
+    const startGapUsage = startGap === null ? 0 : (gapUsage.get(startGap) || 0);
+    const mustMergeBeforeZone0 = startGap !== null && startGapUsage > 0;
+
+    const uncoveredGaps = coreGapSectors.filter(g => (gapUsage.get(g.index) || 0) === 0).length;
+    // Probability of Direct Core Mission: favors merges, but still creates missing inner trunks.
+    const baseDirectProb = 0.5 / (foundZone * foundZone); // Zone 1: 50%, Zone 2: 12.5%
+    const gapCoverageBoost = uncoveredGaps > 0 ? Math.min(0.45, uncoveredGaps * 0.08) : 0;
+    const directProb = mustMergeBeforeZone0 ? 0 : Math.min(0.8, baseDirectProb + gapCoverageBoost);
+    const isDirectMission = Math.random() < directProb;
+
+    const minExpansionDist = aggressivePlacement ? 2 : Math.max(3, 6 - (relaxedLevel * 2));
+    const collectMergeTargets = (enforceCoreDistance, options = {}) => {
+        const requiredGap = options.requiredGap ?? null;
+        const preferredGap = options.preferredGap ?? null;
+        const requireOutsideZone0 = !!options.requireOutsideZone0;
+        const candidates = [];
+        for (let i = 0; i < paths.length; i++) {
+            const path = paths[i];
+            const pathGap = pathGapByIndex[i];
+            if (requiredGap !== null && pathGap !== requiredGap) continue;
+            for (let j = 0; j < path.points.length; j++) {
+                const pt = path.points[j];
+                const pc = Math.floor(pt.x / GRID_SIZE);
+                const pr = Math.floor(pt.y / GRID_SIZE);
+
+                const dToSpawn = Math.hypot(startNode.c - pc, startNode.r - pr);
+                if (dToSpawn < minExpansionDist) continue;
+
+                const dToCore = Math.hypot(pc - centerC, pr - centerR);
+                if (requireOutsideZone0 && dToCore < ZONE0_RADIUS_CELLS) continue;
+                if (enforceCoreDistance) {
+                    if (dToCore < PATHING_RULES.mergeMinCoreDistance) continue;
+                }
+                if (isGridNearHardpoint(pc, pr, mergeHardpointBuffer)) continue;
+                if (!aggressivePlacement && relaxedLevel === 0 && !hasOpenApproach(pc, pr)) continue;
+
+                let score = dToSpawn + Math.random() * 0.9;
+                if (preferredGap !== null && pathGap !== preferredGap) score += 4.5;
+                candidates.push({ c: pc, r: pr, pathIndex: i, pointIndex: j, score });
+            }
+        }
+        candidates.sort((a, b) => a.score - b.score);
+        return candidates.slice(0, aggressivePlacement ? 420 : 240);
+    };
+
+    if (!isDirectMission) {
+        let mergeCandidates = [];
+        if (mustMergeBeforeZone0 && startGap !== null) {
+            mergeCandidates = collectMergeTargets(true, {
+                requiredGap: startGap,
+                requireOutsideZone0: true
+            });
+            if (mergeCandidates.length === 0) {
+                mergeCandidates = collectMergeTargets(false, {
+                    requiredGap: startGap,
+                    requireOutsideZone0: true
+                });
+            }
+        } else {
+            mergeCandidates = collectMergeTargets(true, { preferredGap: startGap });
+            if (mergeCandidates.length === 0) mergeCandidates = collectMergeTargets(false, { preferredGap: startGap });
+        }
+
+        const mergePathAttempts = Math.min(
+            aggressivePlacement ? 320 : (relaxedLevel === 0 ? 100 : (relaxedLevel === 1 ? 180 : 260)),
+            mergeCandidates.length
+        );
+        for (let i = 0; i < mergePathAttempts; i++) {
+            const candidate = mergeCandidates[i];
+            const localAllowed = new Set([`${candidate.c},${candidate.r}`]);
+            const attemptPath = findPathOnGrid(
+                startNode,
+                { c: candidate.c, r: candidate.r },
+                obstacles,
+                localAllowed
+            );
+            if (!attemptPath) continue;
+
+            newPathPoints = attemptPath;
+            targetNode = { c: candidate.c, r: candidate.r };
+            mergePathIndex = candidate.pathIndex;
+            mergePointIndex = candidate.pointIndex;
+            break;
+        }
+    }
+
+    if (!newPathPoints && mustMergeBeforeZone0 && startGap !== null) {
+        if (relaxedLevel < 2) {
+            return generateNewPath({ ...options, relaxedLevel: relaxedLevel + 1, suppressLogs: true });
+        }
+        if (!suppressLogs) {
+            console.warn("[MISSION FAILED] Gap lane occupied; merge-before-zone0 rule blocked direct core route.");
+        }
+        return false;
+    }
+
+    if (!newPathPoints) {
+        // Direct mission or fallback: create/extend trunks through hardpoint gaps.
+        const coreEntryCandidates = coreGapSectors
+            .map(sector => ({
+                gapIndex: sector.index,
+                c: Math.round(endNode.c + Math.cos(sector.centerAngle) * Math.max(1, ZONE0_RADIUS_CELLS - 1)),
+                r: Math.round(endNode.r + Math.sin(sector.centerAngle) * Math.max(1, ZONE0_RADIUS_CELLS - 1))
+            }))
+            .filter(t => t.c >= 0 && t.c < cols && t.r >= 0 && t.r < rows && !isGridNearHardpoint(t.c, t.r, 0));
+
+        const rankedEntries = coreEntryCandidates
+            .map(t => {
+                const key = `${t.c},${t.r}`;
+                return {
+                    ...t,
+                    usage: gapUsage.get(t.gapIndex) || 0,
+                    startGapMatch: startGap !== null && t.gapIndex === startGap ? 1 : 0,
+                    blocked: obstacleSet.has(key) ? 1 : 0,
+                    jitter: Math.random() * 0.25
+                };
+            })
+            .sort((a, b) => {
+                if (a.startGapMatch !== b.startGapMatch) return b.startGapMatch - a.startGapMatch;
+                if (a.usage !== b.usage) return a.usage - b.usage;
+                if (a.blocked !== b.blocked) return a.blocked - b.blocked;
+                return a.jitter - b.jitter;
+            });
+
+        const preferredEntry = rankedEntries.length ? rankedEntries[0] : null;
+        const directTarget = preferredEntry ? { c: preferredEntry.c, r: preferredEntry.r } : endNode;
+        const localAllowed = new Set(allowedObstacleKeys);
+        if (preferredEntry && preferredEntry.blocked) {
+            localAllowed.add(`${preferredEntry.c},${preferredEntry.r}`);
+        }
+        localAllowed.add(`${endNode.c},${endNode.r}`);
+
+        newPathPoints = findPathOnGrid(startNode, directTarget, obstacles, localAllowed);
+        if (newPathPoints && (directTarget.c !== endNode.c || directTarget.r !== endNode.r)) {
+            const last = newPathPoints[newPathPoints.length - 1];
+            const lastC = Math.floor(last.x / GRID_SIZE);
+            const lastR = Math.floor(last.y / GRID_SIZE);
+            if (lastC !== endNode.c || lastR !== endNode.r) {
+                newPathPoints.push({
+                    x: endNode.c * GRID_SIZE + GRID_SIZE / 2,
+                    y: endNode.r * GRID_SIZE + GRID_SIZE / 2
+                });
+            }
+        }
+
+        targetNode = directTarget;
+        mergePathIndex = -1;
+        mergePointIndex = -1;
+    }
+
+    if (!newPathPoints) {
+        if (relaxedLevel < 2) {
+            return generateNewPath({ ...options, relaxedLevel: relaxedLevel + 1, suppressLogs: true });
+        }
+        if (!suppressLogs) {
+            console.warn("[MISSION FAILED] Pathfinder could not connect new rift.");
+        }
+        return false;
+    }
+
+    if (mergePathIndex !== -1) {
+        const targetPath = paths[mergePathIndex];
+        const continuation = targetPath.points.slice(mergePointIndex + 1);
+        newPathPoints.push(...continuation);
+    }
+
+    // Safety guard: don't commit paths that overlap themselves.
+    const seenCells = new Set();
+    let hasSelfOverlap = false;
+    for (const p of newPathPoints) {
+        const key = `${Math.floor(p.x / GRID_SIZE)},${Math.floor(p.y / GRID_SIZE)}`;
+        if (seenCells.has(key)) {
+            hasSelfOverlap = true;
+            break;
+        }
+        seenCells.add(key);
+    }
+    if (hasSelfOverlap) {
+        if (relaxedLevel < 2) {
+            return generateNewPath({ ...options, relaxedLevel: relaxedLevel + 1, suppressLogs: true });
+        }
+        if (!suppressLogs) {
+            console.warn("[MISSION FAILED] Generated path self-overlap detected. Path discarded.");
+        }
+        return false;
+    }
+
+    paths.push({ points: newPathPoints, level: 1, zone: foundZone });
+
+    // DESTROY TOWERS ON PATH
+    for (let i = towers.length - 1; i >= 0; i--) {
+        const t = towers[i];
+        if (t.hardpointId) continue;
+        const tolerance = GRID_SIZE / 2;
+        let hit = false;
+
+        for (let j = 0; j < newPathPoints.length - 1; j++) {
+            const p1 = newPathPoints[j];
+            const p2 = newPathPoints[j + 1];
+            if (Math.abs(p1.y - p2.y) < 1) { // Horizontal
+                if (Math.abs(t.y - p1.y) < tolerance && t.x >= Math.min(p1.x, p2.x) - tolerance && t.x <= Math.max(p1.x, p2.x) + tolerance) { hit = true; break; }
+            } else { // Vertical
+                if (Math.abs(t.x - p1.x) < tolerance && t.y >= Math.min(p1.y, p2.y) - tolerance && t.y <= Math.max(p1.y, p2.y) + tolerance) { hit = true; break; }
+            }
+        }
+
+        if (hit) {
+            money += Math.floor((t.cost * t.level) * 0.7);
+            createParticles(t.x, t.y, '#fff', 10);
+            towers.splice(i, 1);
+        }
+    }
+    updateUI();
+    return true;
 }
 
-function findPathOnGrid(start, end, obstacles) {
+function findPathOnGrid(start, end, obstacles, allowedObstacleKeys = null) {
     const cols = Math.floor(width / GRID_SIZE);
     const rows = Math.floor(height / GRID_SIZE);
 
     const startNode = { c: start.c, r: start.r };
     const endNode = { c: end.c, r: end.r };
+    const obstacleSet = new Set((obstacles || []).map(ob => `${ob.x},${ob.y}`));
+    const allowedSet = allowedObstacleKeys || new Set();
+
+    const isInCurrentBranch = (node, c, r) => {
+        let cursor = node;
+        while (cursor) {
+            if (cursor.c === c && cursor.r === r) return true;
+            cursor = cursor.parent;
+        }
+        return false;
+    };
 
     const openSet = [];
     openSet.push({
@@ -2182,8 +2882,12 @@ function findPathOnGrid(start, end, obstacles) {
 
         if (current.c === endNode.c && current.r === endNode.r) {
             const pathPoints = [];
+            const uniqueCells = new Set();
             let temp = current;
             while (temp) {
+                const key = `${temp.c},${temp.r}`;
+                if (uniqueCells.has(key)) return null;
+                uniqueCells.add(key);
                 pathPoints.unshift({ x: temp.c * GRID_SIZE + GRID_SIZE / 2, y: temp.r * GRID_SIZE + GRID_SIZE / 2 });
                 temp = temp.parent;
             }
@@ -2202,21 +2906,24 @@ function findPathOnGrid(start, end, obstacles) {
 
         for (const n of neighbors) {
             if (n.c >= 0 && n.c < cols && n.r >= 0 && n.r < rows) {
-                // Crossing Penalty: Instead of a hard block, we use a very high cost
-                // This ensures the pathfinder doesn't "break" but paths avoid crossing.
-                let obstaclePenalty = 0;
-                for (const ob of obstacles) {
-                    if (ob.x === n.c && ob.y === n.r) {
-                        obstaclePenalty = 100;
-                        break;
-                    }
+                const nKey = `${n.c},${n.r}`;
+                // Hard block occupied tiles: no path crossing. Merge is allowed only at approved cells.
+                if (obstacleSet.has(nKey) && !allowedSet.has(nKey)) continue;
+                // Prevent branch loops/folding over itself while searching.
+                if (isInCurrentBranch(current, n.c, n.r)) continue;
+
+                let cost = 1;
+                const isTurning = current.dir && (current.dir.dc !== n.dc || current.dir.dr !== n.dr);
+                if (isTurning) {
+                    cost += 5; // Reduced baseline turn penalty for better map coverage
                 }
 
-                const nKey = `${n.c},${n.r}`;
-                let cost = 1 + obstaclePenalty;
-                if (current.dir && (current.dir.dc !== n.dc || current.dir.dr !== n.dr)) {
-                    cost += 5; // Reduced turn penalty for better map coverage
+                const distToCore = Math.hypot(n.c - endNode.c, n.r - endNode.r);
+                if (isTurning && distToCore < PATHING_RULES.nearCoreStraightRadius) {
+                    const turnBias = 1 - (distToCore / PATHING_RULES.nearCoreStraightRadius);
+                    cost += PATHING_RULES.nearCoreTurnPenaltyBoost * turnBias;
                 }
+                cost += getCoreRepulsionPenalty(n.c, n.r, endNode);
 
                 const g = current.g + cost;
                 if (closedSet.has(nKey) && closedSet.get(nKey) <= g) continue;
@@ -2460,6 +3167,7 @@ function updateSelectionUI() {
     const t = selectedPlacedTower;
     const upgradeCost = getUpgradeCost(t);
     const refund = Math.floor((t.totalCost || t.cost) * 0.7);
+    const hardpointLabel = t.hardpointType === 'core' ? 'CORE HARDPOINT' : (t.hardpointType === 'micro' ? 'MICRO HARDPOINT' : null);
 
     panel.classList.remove('hidden');
     panel.innerHTML = `
@@ -2469,6 +3177,7 @@ function updateSelectionUI() {
             <div id="sel-level">Level: ${t.level}</div>
             <div id="sel-damage">Damage: ${Math.floor(t.damage)}</div>
             <div id="sel-range">Range: ${Math.floor(t.range)}</div>
+            ${hardpointLabel ? `<div id="sel-slot">Mount: ${hardpointLabel}</div>` : ''}
         </div>
         <div class="actions">
             <button class="action-btn upgrade" onclick="upgradeTower()">
@@ -2485,41 +3194,44 @@ function updateSelectionUI() {
 
 function isValidPlacement(x, y, towerConfig) {
     const snap = snapToGrid(x, y);
+    const hardpoint = getHardpointAtWorld(snap.x, snap.y);
 
     // Check UI bounds (approximate) - don't place under controls
     // These are world coordinates, so need to convert UI bounds to world
     const uiTopWorldY = screenToWorld(0, 60).y;
     const uiBottomWorldY = screenToWorld(0, height - 100).y;
 
-    if (snap.y > uiBottomWorldY || snap.y < uiTopWorldY) return { valid: false, reason: 'ui' };
+    if (snap.y > uiBottomWorldY || snap.y < uiTopWorldY) return { valid: false, reason: 'ui', snap: snap, hardpoint: hardpoint };
 
     // Check cost
-    if (money < towerConfig.cost) return { valid: false, reason: 'cost' };
+    if (money < towerConfig.cost) return { valid: false, reason: 'cost', snap: snap, hardpoint: hardpoint };
 
     // Check collision with path
     // Since everything is grid based, we can just check if the point intersects the path segments with a box check
     const tolerance = GRID_SIZE / 2; // Exact hit
 
-    for (const rift of paths) {
-        const path = rift.points;
-        for (let i = 0; i < path.length - 1; i++) {
-            const p1 = path[i];
-            const p2 = path[i + 1];
+    if (!hardpoint) {
+        for (const rift of paths) {
+            const path = rift.points;
+            for (let i = 0; i < path.length - 1; i++) {
+                const p1 = path[i];
+                const p2 = path[i + 1];
 
-            // Horizontal segment
-            if (Math.abs(p1.y - p2.y) < 1) {
-                if (Math.abs(snap.y - p1.y) < tolerance &&
-                    snap.x >= Math.min(p1.x, p2.x) - tolerance &&
-                    snap.x <= Math.max(p1.x, p2.x) + tolerance) {
-                    return { valid: false, reason: 'path' };
+                // Horizontal segment
+                if (Math.abs(p1.y - p2.y) < 1) {
+                    if (Math.abs(snap.y - p1.y) < tolerance &&
+                        snap.x >= Math.min(p1.x, p2.x) - tolerance &&
+                        snap.x <= Math.max(p1.x, p2.x) + tolerance) {
+                        return { valid: false, reason: 'path', snap: snap, hardpoint: hardpoint };
+                    }
                 }
-            }
-            // Vertical segment
-            else {
-                if (Math.abs(snap.x - p1.x) < tolerance &&
-                    snap.y >= Math.min(p1.y, p2.y) - tolerance &&
-                    snap.y <= Math.max(p1.y, p2.y) + tolerance) {
-                    return { valid: false, reason: 'path' };
+                // Vertical segment
+                else {
+                    if (Math.abs(snap.x - p1.x) < tolerance &&
+                        snap.y >= Math.min(p1.y, p2.y) - tolerance &&
+                        snap.y <= Math.max(p1.y, p2.y) + tolerance) {
+                        return { valid: false, reason: 'path', snap: snap, hardpoint: hardpoint };
+                    }
                 }
             }
         }
@@ -2528,11 +3240,11 @@ function isValidPlacement(x, y, towerConfig) {
     // Check collision with other towers (grid based equality)
     for (let t of towers) {
         if (Math.abs(t.x - snap.x) < 1 && Math.abs(t.y - snap.y) < 1) {
-            return { valid: false, reason: 'tower' };
+            return { valid: false, reason: 'tower', snap: snap, hardpoint: hardpoint };
         }
     }
 
-    return { valid: true, snap: snap };
+    return { valid: true, snap: snap, hardpoint: hardpoint };
 }
 
 function buildTower(worldX, worldY) {
@@ -2549,6 +3261,16 @@ function buildTower(worldX, worldY) {
             return;
         }
 
+        const selectedHardpoint = validation.hardpoint || null;
+        let hardpointRules = null;
+        if (selectedHardpoint) {
+            hardpointRules = selectedHardpoint.type === 'core' ? HARDPOINT_RULES.core : HARDPOINT_RULES.micro;
+        }
+
+        const maxCooldown = hardpointRules
+            ? Math.max(4, towerConfig.cooldown * hardpointRules.cooldownMult)
+            : towerConfig.cooldown;
+
         // Place tower
         money -= towerConfig.cost;
         towers.push({
@@ -2558,7 +3280,12 @@ function buildTower(worldX, worldY) {
             level: 1,
             totalCost: towerConfig.cost,
             cooldown: 0, // Current cooldown
-            maxCooldown: towerConfig.cooldown // Store original cooldown as max
+            maxCooldown: maxCooldown, // Store original cooldown as max
+            damage: towerConfig.damage * (hardpointRules ? hardpointRules.damageMult : 1),
+            range: towerConfig.range * (hardpointRules ? hardpointRules.rangeMult : 1),
+            hardpointId: selectedHardpoint ? selectedHardpoint.id : null,
+            hardpointType: selectedHardpoint ? selectedHardpoint.type : null,
+            hardpointScale: hardpointRules ? hardpointRules.sizeScale : 1
         });
 
         createParticles(validation.snap.x, validation.snap.y, towerConfig.color, 10);
@@ -2779,14 +3506,17 @@ window.debugSpawn = function (type) {
 };
 
 window.debugCreateRift = function () {
-    generateNewPath();
+    const created = generateNewPath();
     // Force path recalculation or visual update if needed
     // generateNewPath updates 'paths' array and handles tower removal
     // It doesn't trigger path recalculation for existing enemies immediately unless they check currentPath
 
-    // Play sound
-    AudioEngine.playSFX('build');
-    console.log("Debug: Created new rift");
+    if (created) {
+        AudioEngine.playSFX('build');
+        console.log("Debug: Created new rift");
+    } else {
+        console.warn("Debug: Rift generation failed.");
+    }
 
     // Update UI to show new rift count/intel
     if (document.getElementById('wave-info-panel') && !document.getElementById('wave-info-panel').classList.contains('hidden')) {
@@ -2819,6 +3549,94 @@ window.debugLevelUpRift = function () {
     // If this rift is selected, update selection UI
     if (selectedRift === rift) {
         updateSelectionUI();
+    }
+};
+
+window.debugIncreaseWave = function (steps = 1, autoStart = true) {
+    if (gameState !== 'playing') return;
+
+    const count = Math.max(1, Math.floor(Number(steps) || 1));
+
+    // Reset active combat state so wave jump is deterministic.
+    enemies = [];
+    projectiles = [];
+    particles = [];
+    spawnQueue = [];
+    isWaveActive = false;
+
+    // Advance one wave at a time and simulate intermediate wave-start systems
+    // so progression matches normal gameplay pacing (rift evolution, mutation checks, etc.).
+    for (let i = 0; i < count; i++) {
+        const isFinalStep = i === count - 1;
+        wave++;
+        startPrepPhase();
+
+        if (!isFinalStep) {
+            // Simulate wave-start effects for skipped waves, then instantly resolve the wave.
+            startWave({ silent: true, persist: false, tutorialProgress: false });
+            enemies = [];
+            projectiles = [];
+            particles = [];
+            spawnQueue = [];
+            isWaveActive = false;
+        }
+    }
+
+    if (autoStart) {
+        startWave({ persist: false, tutorialProgress: false });
+    } else {
+        updateUI();
+    }
+
+    saveGame();
+    console.log(`Debug: Advanced ${count} wave(s) to W${wave}${autoStart ? ' and started wave' : ''}.`);
+};
+
+window.debugRebuildRiftsByWave = function () {
+    if (gameState !== 'playing') return;
+
+    // Stabilize state before topology rewrite.
+    enemies = [];
+    projectiles = [];
+    particles = [];
+    spawnQueue = [];
+    isWaveActive = false;
+    selectedRift = null;
+    selectedZone = -1;
+
+    const expectedRifts = getExpectedRiftCountByWave(wave);
+
+    // Destroy current rifts and regenerate baseline topology.
+    paths = [];
+    calculatePath(); // Creates initial rift and hardpoints
+
+    pendingRiftGenerations = Math.max(0, expectedRifts - paths.length);
+    let attempts = 0;
+    let failStreak = 0;
+    const maxAttempts = Math.min(1800, 120 + pendingRiftGenerations * 40);
+    while (pendingRiftGenerations > 0 && attempts < maxAttempts) {
+        const relaxedLevel = failStreak >= 10 ? 2 : (failStreak >= 4 ? 1 : 0);
+        const aggressivePlacement = failStreak >= 16;
+        const created = generateNewPath({ relaxedLevel, aggressivePlacement, suppressLogs: true });
+        if (created) {
+            pendingRiftGenerations--;
+            failStreak = 0;
+        } else {
+            failStreak++;
+        }
+        attempts++;
+    }
+
+    // Enter clean prep state; prep flow keeps retrying backlog if any remains.
+    startPrepPhase();
+    AudioEngine.playSFX('build');
+    updateSelectionUI();
+    saveGame();
+
+    if (pendingRiftGenerations > 0) {
+        console.warn(`Debug: Rebuilt rifts to ${paths.length}/${expectedRifts}. Pending ${pendingRiftGenerations} for future prep retries.`);
+    } else {
+        console.log(`Debug: Rebuilt rifts successfully. ${paths.length}/${expectedRifts} ready for W${wave}.`);
     }
 };
 
@@ -3068,45 +3886,13 @@ function updateUI() {
     document.getElementById('lives-display').innerText = lives;
     document.getElementById('wave-display').innerText = wave;
 
-    const count = spawnQueue.length + enemies.length;
-    let typeText = '';
-
-    if (isWaveActive && count > 0) {
-        const counts = { BASIC: 0, FAST: 0, TANK: 0, BOSS: 0, MUTANT: 0, SPLITTER: 0, MINI: 0, BULWARK: 0, SHIFTER: 0 };
-
-        // Count queue
-        for (const t of spawnQueue) {
-            const up = t.toUpperCase();
-            if (t.startsWith('mutant_')) counts.MUTANT++;
-            else if (counts[up] !== undefined) counts[up]++;
-        }
-
-        // Count active
-        for (const e of enemies) {
-            const up = (e.type || 'basic').toUpperCase();
-            if (e.isMutant) counts.MUTANT++;
-            else if (counts[up] !== undefined) counts[up]++;
-        }
-
-        let html = '';
-        if (counts['BASIC']) html += `<div class="enemy-count-group" title="Basic"><div class="enemy-icon-small icon-basic"></div>${counts['BASIC']}</div>`;
-        if (counts['FAST']) html += `<div class="enemy-count-group" title="Fast"><div class="enemy-icon-small icon-fast"></div>${counts['FAST']}</div>`;
-        if (counts['TANK']) html += `<div class="enemy-count-group" title="Tank"><div class="enemy-icon-small icon-tank"></div>${counts['TANK']}</div>`;
-        if (counts['SPLITTER']) html += `<div class="enemy-count-group" title="Splitter"><div class="enemy-icon-small icon-splitter"></div>${counts['SPLITTER']}</div>`;
-        if (counts['MINI']) html += `<div class="enemy-count-group" title="Mini"><div class="enemy-icon-small icon-mini"></div>${counts['MINI']}</div>`;
-        if (counts['BULWARK']) html += `<div class="enemy-count-group" title="Bulwark"><div class="enemy-icon-small icon-bulwark"></div>${counts['BULWARK']}</div>`;
-        if (counts['SHIFTER']) html += `<div class="enemy-count-group" title="Shifter"><div class="enemy-icon-small icon-shifter"></div>${counts['SHIFTER']}</div>`;
-        if (counts['BOSS']) html += `<div class="enemy-count-group" title="Boss"><div class="enemy-icon-small icon-boss"></div>${counts['BOSS']}</div>`;
-        if (counts['MUTANT']) html += `<div class="enemy-count-group" title="Mutant"><div class="enemy-icon-small icon-mutant"></div>${counts['MUTANT']}</div>`;
-
-        document.getElementById('enemy-info').innerHTML = html;
+    const remainingEnemies = spawnQueue.length + enemies.length;
+    const enemyInfoEl = document.getElementById('enemy-info');
+    if (isWaveActive) {
+        if (remainingEnemies > currentWaveTotalEnemies) currentWaveTotalEnemies = remainingEnemies;
+        enemyInfoEl.innerText = `REMAINING: ${remainingEnemies}`;
     } else {
-        document.getElementById('enemy-info').innerText = 'CLEARED';
-    }
-
-    // Safety check
-    if (!document.getElementById('enemy-info').innerHTML && isWaveActive) {
-        document.getElementById('enemy-info').innerText = 'INCOMING...';
+        enemyInfoEl.innerText = `REMAINING: 0`;
     }
 
     const timerEl = document.getElementById('timer-display');
@@ -3215,17 +4001,17 @@ function draw() {
         ctx.setLineDash([10, 5]);
         ctx.lineWidth = 2;
 
-        // Zone 0 (No Rift Zone) - 6 units
+        // Zone 0 (No Rift Zone)
         ctx.strokeStyle = 'rgba(255, 0, 0, 0.4)';
         ctx.beginPath();
-        ctx.arc(base.x, base.y, 6 * GRID_SIZE, 0, Math.PI * 2);
+        ctx.arc(base.x, base.y, ZONE0_RADIUS_CELLS * GRID_SIZE, 0, Math.PI * 2);
         ctx.stroke();
         ctx.fillStyle = 'rgba(255, 0, 0, 0.05)';
         ctx.fill();
 
         // Extended Zones (every 3 units)
-        for (let r = 9; r < 60; r += 3) {
-            const zi = Math.floor((r - 6) / 3);
+        for (let r = ZONE0_RADIUS_CELLS + 3; r < 60; r += 3) {
+            const zi = Math.floor((r - ZONE0_RADIUS_CELLS) / 3);
             ctx.strokeStyle = (zi === selectedZone) ? 'rgba(250, 238, 10, 0.8)' : 'rgba(0, 243, 255, 0.2)';
             ctx.lineWidth = (zi === selectedZone) ? 4 : 2;
             ctx.beginPath();
@@ -3419,6 +4205,8 @@ function draw() {
     ctx.fill();
     ctx.globalAlpha = 1.0;
 
+    drawHardpoints();
+
     // Draw Build Target Selection
     if (buildTarget) {
         ctx.strokeStyle = '#00f3ff';
@@ -3449,7 +4237,7 @@ function draw() {
 
     // Draw Towers
     for (let t of towers) {
-        drawTowerOne(t.type, t.x, t.y, t.color);
+        drawTowerOne(t.type, t.x, t.y, t.color, t.hardpointScale || 1);
         // Draw Level Pips
         if (t.level > 1) {
             drawLevelPips(t.level, t.x, t.y + 20);
@@ -3670,6 +4458,10 @@ function draw() {
         // Use buildTarget coordinates instead of mouseX/mouseY
         const validation = isValidPlacement(buildTarget.x, buildTarget.y, towerConfig);
         const snap = buildTarget;
+        const previewHardpoint = validation.hardpoint || null;
+        const previewScale = previewHardpoint
+            ? (previewHardpoint.type === 'core' ? HARDPOINT_RULES.core.sizeScale : HARDPOINT_RULES.micro.sizeScale)
+            : 1;
 
         ctx.save();
 
@@ -3690,7 +4482,7 @@ function draw() {
         // Tower Ghost
         ctx.globalAlpha = 0.5;
         const color = validation.valid ? towerConfig.color : '#ff0000';
-        drawTowerOne(selectedTowerType, snap.x, snap.y, color);
+        drawTowerOne(selectedTowerType, snap.x, snap.y, color, previewScale);
 
         ctx.restore();
     }
@@ -3729,24 +4521,75 @@ window.resetCamera = function () {
     }
 };
 
-function drawTowerOne(type, x, y, color) {
+function drawHardpoints() {
+    if (!hardpoints.length) return;
+
+    const occupiedSlots = new Set();
+    for (const t of towers) {
+        occupiedSlots.add(`${Math.floor(t.x / GRID_SIZE)},${Math.floor(t.y / GRID_SIZE)}`);
+    }
+
+    let activeBuildKey = null;
+    if (buildTarget) {
+        activeBuildKey = `${Math.floor(buildTarget.x / GRID_SIZE)},${Math.floor(buildTarget.y / GRID_SIZE)}`;
+    }
+
+    for (const hp of hardpoints) {
+        const key = `${hp.c},${hp.r}`;
+        const isOccupied = occupiedSlots.has(key);
+        const isSelected = activeBuildKey === key;
+        const isCore = hp.type === 'core';
+
+        const radius = isCore ? GRID_SIZE * 0.36 : GRID_SIZE * 0.25;
+        const ringColor = isCore ? '#00ff41' : '#fcee0a';
+        const fillColor = isCore ? 'rgba(0, 255, 65, 0.09)' : 'rgba(252, 238, 10, 0.08)';
+
+        ctx.save();
+        ctx.shadowBlur = isSelected ? 18 : 10;
+        ctx.shadowColor = ringColor;
+        ctx.lineWidth = isSelected ? 3 : (isCore ? 2.4 : 1.8);
+        ctx.strokeStyle = isOccupied ? 'rgba(255,255,255,0.3)' : ringColor;
+        ctx.fillStyle = isOccupied ? 'rgba(255,255,255,0.06)' : fillColor;
+
+        ctx.beginPath();
+        ctx.arc(hp.x, hp.y, radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        if (!isOccupied) {
+            ctx.beginPath();
+            ctx.moveTo(hp.x - radius * 0.45, hp.y);
+            ctx.lineTo(hp.x + radius * 0.45, hp.y);
+            ctx.moveTo(hp.x, hp.y - radius * 0.45);
+            ctx.lineTo(hp.x, hp.y + radius * 0.45);
+            ctx.lineWidth = 1.2;
+            ctx.strokeStyle = isCore ? 'rgba(0, 255, 65, 0.75)' : 'rgba(252, 238, 10, 0.65)';
+            ctx.stroke();
+        }
+
+        ctx.restore();
+    }
+}
+
+function drawTowerOne(type, x, y, color, scale = 1) {
     ctx.fillStyle = color;
     ctx.shadowBlur = 15;
     ctx.shadowColor = color;
+    const s = Math.max(0.5, scale || 1);
 
     ctx.beginPath();
     if (type === 'basic') {
         // Square
-        ctx.rect(x - 13, y - 13, 26, 26);
+        ctx.rect(x - 13 * s, y - 13 * s, 26 * s, 26 * s);
     } else if (type === 'rapid') {
         // Circle
-        ctx.arc(x, y, 13, 0, Math.PI * 2);
+        ctx.arc(x, y, 13 * s, 0, Math.PI * 2);
     } else if (type === 'sniper') {
         // Diamond (Rotated Square)
-        ctx.moveTo(x, y - 15);
-        ctx.lineTo(x + 15, y);
-        ctx.lineTo(x, y + 15);
-        ctx.lineTo(x - 15, y);
+        ctx.moveTo(x, y - 15 * s);
+        ctx.lineTo(x + 15 * s, y);
+        ctx.lineTo(x, y + 15 * s);
+        ctx.lineTo(x - 15 * s, y);
     }
     ctx.fill();
 }

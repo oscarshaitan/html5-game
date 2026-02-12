@@ -112,8 +112,8 @@
                 </div>
                 <div id="wave-intel-content">
                     <div class="intel-group">
-                        <label>ENEMY CAPACITY:</label>
-                        <span id="intel-count">0</span>
+                        <label>RIFTS ACTIVE:</label>
+                        <span id="intel-rifts">0</span>
                     </div>
                     <div class="intel-group">
                         <label>MUTATION POTENTIAL:</label>
@@ -124,11 +124,9 @@
                         <span id="intel-threat">NORMAL</span>
                     </div>
                     <div class="intel-group">
-                        <label>SPECIAL DATA:</label>
-                        <ul id="intel-special">
-                            <li>None</li>
-                        </ul>
+                        <label>ENEMY DISTRIBUTION:</label>
                     </div>
+                    <div id="intel-distribution"></div>
                 </div>
             </div>
 
@@ -168,6 +166,17 @@
                             <button class="debug-btn" style="flex: 1; font-size: 0.7rem;"
                                 onclick="debugLevelUpRift()">LEVEL UP RIFT</button>
                         </div>
+                        <div style="display: flex; gap: 5px; margin-bottom: 5px; width: 100%;">
+                            <button class="debug-btn" style="flex: 1; font-size: 0.7rem;"
+                                onclick="debugIncreaseWave(1, true)">+1 WAVE</button>
+                            <button class="debug-btn" style="flex: 1; font-size: 0.7rem;"
+                                onclick="debugIncreaseWave(5, true)">+5 WAVES</button>
+                            <button class="debug-btn" style="flex: 1; font-size: 0.7rem;"
+                                onclick="debugIncreaseWave(10, true)">+10 WAVES</button>
+                        </div>
+                        <button class="debug-btn"
+                            style="width: 100%; margin-bottom: 5px; font-size: 0.7rem; background: #00f3ff;"
+                            onclick="debugRebuildRiftsByWave()">REBUILD RIFTS</button>
                         <button class="debug-btn"
                             style="width: 100%; margin-bottom: 5px; font-size: 0.7rem; background: #ff00ac;"
                             onclick="toggleNoBuildOverlay()">TOGGLE OVERLAY</button>

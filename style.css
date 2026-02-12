@@ -102,15 +102,10 @@ canvas {
 #enemy-info {
     color: #ff4444;
     min-width: 150px;
-    /* Wider for breakdown */
     text-align: center;
     font-size: 0.9rem;
-    /* Slightly smaller to fit */
     white-space: nowrap;
-    display: flex;
-    gap: 15px;
-    justify-content: center;
-    align-items: center;
+    display: block;
 }
 
 .enemy-count-group {
@@ -479,10 +474,7 @@ canvas {
 
 #pause-menu {
     position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
+    inset: 0;
     background:
         radial-gradient(circle at 50% 45%, rgba(255, 0, 172, 0.08), transparent 52%),
         rgba(5, 5, 16, 0.86);
@@ -493,9 +485,14 @@ canvas {
     justify-content: center;
     pointer-events: auto;
     z-index: 90;
-    overflow-y: auto;
-    /* Fallback for extremely small screens */
-    padding: 20px 0;
+    overflow: hidden;
+    box-sizing: border-box;
+    padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+}
+
+#pause-menu h1 {
+    margin: 0 0 12px;
+    flex-shrink: 0;
 }
 
 .menu-buttons {
@@ -509,6 +506,11 @@ canvas {
     border: 1px solid var(--panel-border-blue);
     border-radius: 12px;
     box-shadow: var(--panel-shadow-blue);
+    box-sizing: border-box;
+    max-height: calc(100dvh - 120px);
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
 }
 
 /* Responsive adjustments for pause menu */
@@ -894,6 +896,26 @@ button:hover {
 
 #intel-special li {
     margin-bottom: 3px;
+}
+
+#intel-distribution {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: -4px;
+}
+
+#wave-info-panel #intel-distribution .enemy-count-group {
+    font-size: 0.72rem;
+    border: 1px solid rgba(0, 243, 255, 0.25);
+    border-radius: 4px;
+    padding: 2px 6px;
+    background: rgba(0, 0, 0, 0.25);
+}
+
+#wave-info-panel #intel-distribution .enemy-icon-small {
+    width: 10px;
+    height: 10px;
 }
 
 /* --- Abilities Bar --- */
@@ -1635,7 +1657,8 @@ button:hover {
 
     #pause-menu {
         justify-content: flex-start;
-        padding: max(10px, env(safe-area-inset-top)) 0 max(10px, env(safe-area-inset-bottom));
+        overflow: hidden;
+        padding: max(10px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
     }
 
     #pause-menu h1 {
@@ -1647,6 +1670,7 @@ button:hover {
         width: min(760px, 94vw);
         gap: 10px;
         padding: 12px;
+        max-height: calc(100dvh - 96px);
     }
 
     #pause-menu .menu-buttons button,
@@ -1785,13 +1809,15 @@ button:hover {
     }
 
     #pause-menu {
-        padding: max(8px, env(safe-area-inset-top)) 0 max(8px, env(safe-area-inset-bottom));
+        overflow: hidden;
+        padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
     }
 
     .menu-buttons {
         width: 96vw;
         gap: 8px;
         padding: 10px;
+        max-height: calc(100dvh - 88px);
     }
 
     #pause-menu .menu-buttons button,
@@ -2034,14 +2060,15 @@ button:hover {
 
     #pause-menu {
         justify-content: flex-start;
-        overflow-y: auto;
-        padding: max(6px, env(safe-area-inset-top)) 0 max(6px, env(safe-area-inset-bottom));
+        overflow: hidden;
+        padding: max(6px, env(safe-area-inset-top)) max(6px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left));
     }
 
     .menu-buttons {
         width: 98vw;
         gap: 6px;
         padding: 8px;
+        max-height: calc(100dvh - 80px);
     }
 
     #pause-menu .menu-buttons button,
