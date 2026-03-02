@@ -1,122 +1,185 @@
 # The Neon Defense
 
-**[Play now](https://oscarshaitan.github.io/the-neon-defense/)**
+A neon-styled tower defense game — defend the core crystal against escalating Rift waves, elite enemy mutations, and high-pressure late-game scenarios.
 
-The Neon Defense is a fast, neon-styled HTML5 tower defense game built with Canvas and vanilla JavaScript.
-You defend the core against escalating waves, expanding Rift networks, elite path mutations, and high-pressure late game scenarios.
+| Version | Platform | Status | Link |
+|---|---|---|---|
+| **JavaScript** | Web (HTML5 Canvas) | Live | [Play now](https://oscarshaitan.github.io/the-neon-defense/) |
+| **Flutter** | Web · Android · iOS | In development | [Flutter build](https://oscarshaitan.github.io/the-neon-defense/flutter/) |
 
-## Current Status
+---
 
-- Single-player endless defense
-- Desktop and mobile touch support
-- Camera pan and zoom (0.1× min to 1.0× max)
-- Auto-save with manual force-save option
-- Interactive onboarding tutorial
-- Inline gameplay hints
-- Dynamic quality governor (HIGH/MED/LOW stepper with auto-drop toast)
-
-## Core Features
+## Gameplay
 
 ### Combat Loop
-- Four tower classes: Basic, Rapid, Sniper, Arc
-- Tower upgrades and sell flow
-- Base upgrades and life repair
-- Enemy variety including Boss, Splitter, Bulwark, and Shifter behaviors
+- Four tower classes: **Basic**, **Rapid**, **Sniper**, **Arc**
+- Hardpoint placement system — core ring (damage/range bonuses) and micro rings
+- Tower upgrades, sell flow, and base crystal upgrades
+- Arc tower network links with static charge accumulation
 
-### Balance Direction (Planned)
-- Next tower target: **Disruptor** (utility support, Expose + stealth reveal)
-- Frost mechanics are planned as a **Tech Tree Control branch** unlock path
-- Mortar and Prism are currently deferred pending telemetry after Tech Tree v1
-
-### Rift and Wave Systems
-- Multi-path Rift spawning
-- Rift tier progression after high waves
-- Mutation profiles that temporarily alter enemy stats/rewards
+### Rift & Wave System
+- Multi-path Rift spawning with A* pathfinding
+- Rift tier progression and orbital zone biasing
+- Mutation profiles that alter enemy stats and rewards mid-wave
 - Wave Intelligence panel for threat visibility
 
-### Commander Tools
-- Active abilities: EMP and Overclock
-- Energy economy tied to kills
-- Pause menu controls for save/audio/debug
+### Enemies
+- **Basic** · **Fast** · **Tank** · **Boss**
+- **Splitter** — splits into minions on death
+- **Bulwark** — high armor, slow
+- **Shifter** — intermittently invisible
 
-### Presentation
-- Neon UI with animated effects
-- Dynamic VFX (particles, flashes, pulses)
-- Procedural Web Audio soundtrack
-- Dynamic quality governor with +/- stepper (HIGH/MED/LOW) and auto-drop toast
+### Commander Abilities
+- **EMP Burst** — freezes all enemies in a radius (energy cost: 40)
+- **Overclock** — doubles fire rate on a single tower (energy cost: 25)
+- Energy economy tied to kills and regeneration
+
+---
 
 ## Controls
 
-### Desktop
-- Left click: select/interact/place
-- Drag: pan camera
-- Mouse wheel: zoom
-- `Q` / `W` / `E` / `R`: select tower type
-- `1` / `2`: ability targeting
-- `U`: upgrade selected tower
-- `Delete` / `Backspace`: sell selected tower
-- `Esc`: deselect or pause
-- `GAME DETAILS −/+`: cycle quality preset (HIGH/MED/LOW)
+### Desktop (both versions)
+| Input | Action |
+|---|---|
+| Left click / Tap | Select · place · interact |
+| Drag | Pan camera |
+| Scroll / Pinch | Zoom (0.1× – 1.0×) |
+| `Q` `W` `E` `R` | Select tower type |
+| `1` `2` | Ability targeting |
+| `U` | Upgrade selected tower |
+| `Del` / `Bksp` | Sell selected tower |
+| `Esc` / `P` | Pause |
 
-### Touch
-- Tap: select/interact
-- Drag: pan camera
-- Pinch: zoom
+### Mobile / Touch
+- Tower bar and ability slots are always visible as tap targets
+- Pinch to zoom, drag to pan
+- Recenter button (bottom-right) snaps camera back to core
+
+---
 
 ## Run Locally
 
-1. Open `index.html` directly, or serve the folder:
+### JavaScript version
 
 ```bash
+# Serve from the js/ folder, or the repo root:
 python -m http.server 8000
+# then open http://localhost:8000/js/
 ```
 
-2. Open `http://localhost:8000`.
+Or open `js/index.html` directly in a browser.
+
+### Flutter version
+
+```bash
+cd flutter
+flutter pub get
+flutter run -d chrome --web-renderer canvaskit
+```
+
+Build for web:
+
+```bash
+flutter build web --base-href /the-neon-defense/flutter/ --web-renderer canvaskit
+```
+
+---
 
 ## Project Structure
 
-```text
+```
 the-neon-defense/
-  index.html
-  scripts/
-    00_core.js          — constants, tower/arc/quality/pathing config
-    01_init.js          — canvas setup, input, camera, hardpoints, path helpers
-    02_game_control.js  — placement, selection, build UI
-    03_abilities.js     — EMP/Overclock, save/load, path worker management
-    04_tutorial.js      — tutorial flow, generateNewPath(), findPathOnGrid()
-    05_loop.js          — main game loop, spatial grid, wave/enemy logic
-    06_render.js        — all rendering (enemies, towers, VFX, UI), resetCamera()
-    workers/
-      path_worker.js    — Web Worker: async rift/path generation (off main thread)
-  styles/
-    00_base_ui.css
-    01_abilities_debug.css
-    02_tutorial_and_responsive.css
-  manual.html
-  technical_docs.html
-  ROADMAP.md
-  GAME_BALANCE_ANALYSIS.md
-  Improvements.md
+  index.html                  — Landing page (links to both versions)
+  js/                         — JavaScript edition
+    index.html
+    scripts/
+      00_core.js              — Constants, tower/arc/quality/pathing config
+      01_init.js              — Canvas setup, input, camera, hardpoints
+      02_game_control.js      — Placement, selection, build UI
+      03_abilities.js         — EMP/Overclock, save/load, path worker
+      04_tutorial.js          — Tutorial flow, path generation
+      05_loop.js              — Main game loop, wave/enemy logic
+      06_render.js            — All rendering (enemies, towers, VFX, UI)
+      workers/
+        path_worker.js        — Web Worker: async rift path generation
+    styles/
+      00_base_ui.css
+      01_abilities_debug.css
+      02_tutorial_and_responsive.css
+    manual.html
+    technical_docs.html
+  flutter/                    — Flutter/Flame edition
+    lib/
+      main.dart               — App entry, GameWidget, HUD overlay layer
+      game/
+        neon_defense_game.dart
+        config/
+          constants.dart      — All game constants (mirrors JS 00_core.js)
+        world/
+          game_world.dart     — World component, entity managers
+          tile_grid.dart      — Grid rendering (infinite, white lines)
+          hardpoint_manager.dart
+        entities/
+          towers/tower.dart
+          enemies/enemy.dart
+          projectiles/projectile.dart
+          base/core_base.dart
+        systems/
+          pathfinding/
+            a_star.dart
+            rift_generator.dart
+          wave_system.dart
+          spatial_grid.dart
+          ability_system.dart
+          quality_governor.dart
+        vfx/
+          particle_system.dart
+          arc_lightning.dart
+          light_source.dart
+        camera/game_camera.dart
+      ui/
+        hud/
+          stats_bar.dart      — Full-width stats (wave, lives, credits, enemies)
+          tower_bar.dart      — Tower selector with shaped icons
+          abilities_bar.dart  — EMP / Overclock slots + vertical energy bar
+        panels/
+          selection_panel.dart
+          pause_menu.dart
+        screens/
+          start_screen.dart
+          game_over_screen.dart
+    assets/
+      fonts/Orbitron.ttf      — Bundled locally (no CDN dependency)
+      audio/
+      images/
+    pubspec.yaml
 ```
 
-## Documentation
-
-- Player Manual: `manual.html`
-- Technical Docs: `technical_docs.html`
-- Product and feature planning: `ROADMAP.md`
-- Design and balance critique: `GAME_BALANCE_ANALYSIS.md`
+---
 
 ## Technology
 
-- HTML5 Canvas
+### JavaScript Edition
+- HTML5 Canvas API
 - Vanilla JavaScript (ES6+)
 - CSS3
-- Web Audio API
-- Web Workers (async rift path generation)
-- Local Storage
+- Web Audio API (procedural soundtrack)
+- Web Workers (async rift path generation, off main thread)
+- Local Storage (save/load)
 
-## Notes
+### Flutter Edition
+- Flutter 3.x + Dart
+- [Flame](https://flame-engine.org/) game engine (v1.x)
+- CanvasKit web renderer (Skia/WASM, required for game-quality rendering)
+- `compute()` for rift path generation (parallel isolate on mobile, sync on web)
+- SharedPreferences (save/load)
+- Orbitron font bundled locally
 
-- This project is framework-free by design.
-- Gameplay logic is split across `scripts/*.js`.
-- Visual identity and layout behavior are split across `styles/*.css`.
+---
+
+## Documentation
+
+- Player manual: `js/manual.html`
+- Technical reference: `js/technical_docs.html`
+- Feature roadmap: `ROADMAP.md`
+- Balance analysis: `GAME_BALANCE_ANALYSIS.md`
