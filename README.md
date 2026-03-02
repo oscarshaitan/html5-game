@@ -1,11 +1,13 @@
 # The Neon Defense
 
+**https://oscarshaitan.github.io/the-neon-defense/**
+
 A neon-styled tower defense game — defend the core crystal against escalating Rift waves, elite enemy mutations, and high-pressure late-game scenarios.
 
-| Version | Platform | Status | Link |
-|---|---|---|---|
-| **JavaScript** | Web (HTML5 Canvas) | Live | [Play now](https://oscarshaitan.github.io/the-neon-defense/) |
-| **Flutter** | Web · Android · iOS | In development | [Flutter build](https://oscarshaitan.github.io/the-neon-defense/flutter/) |
+| Version | Platform | Status |
+|---|---|---|
+| **JavaScript** | Web (HTML5 Canvas) | Live |
+| **Flutter** | Web · Android · iOS | In development |
 
 ---
 
