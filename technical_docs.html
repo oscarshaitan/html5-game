@@ -267,6 +267,7 @@
         <a href="#combat">COMBAT</a>
         <a href="#ui">UI</a>
         <a href="#audio">AUDIO</a>
+        <a href="#performance">PERFORMANCE</a>
         <a href="#debug">DEBUG</a>
         <a href="#progression">PROGRESSION</a>
     </nav>
@@ -293,11 +294,13 @@
             entities, and initial path graph.</div>
     </div>
     <div class="method">
-        <div class="method-name">saveGame() / loadGame()</div>
+        <div class="method-name">saveGame() / loadGame() / queueAutoSave()</div>
         <div class="desc">Serializes run state to <code>localStorage.neonDefenseSave</code>. Restores towers, rifts,
             economy, and progression metadata. If a saved run was mid-wave, load flow converts it to a short prep phase
             (<code>prepTimer = 5</code>). Audio settings are stored separately via
             <code>localStorage.neonAudioSettings</code>.
+            <code>queueAutoSave()</code> debounces saves with a minimum frame interval to avoid per-frame writes;
+            triggered on wave start, tower builds, upgrades, sells, and ability use.
         </div>
     </div>
     <div class="method">
@@ -394,7 +397,9 @@
         <div class="method-name">updateTowers() / shoot() / hitEnemy()</div>
         <div class="desc">Targeting, projectile emission, and damage resolution. Kill handling updates money, total kill
             counters, energy gain, and conditional splitter spawn. Arc towers use instant chain-lightning resolution,
-            static charge accumulation, and 0.5s stun trigger at 100 charges.</div>
+            static charge accumulation (<code>ARC_TOWER_RULES.staticThreshold = 100</code>), and 0.5s stun on
+            threshold. Death particles spawn only on kill; arc hit particles were removed to reduce per-frame cost.
+            Tower targeting uses <code>ENEMY_SPATIAL_GRID</code> for O(1) broad-phase queries instead of O(n) scans.</div>
     </div>
     <div class="method">
         <div class="method-name">activateAbility(type) / useAbility(type, target)</div>
@@ -432,6 +437,20 @@
         <div class="method-name">getRepairCost()</div>
         <div class="desc">Dynamic repair-price helper used by core panel controls.</div>
     </div>
+    <div class="method">
+        <div class="method-name">updatePerformanceUI() / adjustDetails(delta) / showQualityToast(msg)</div>
+        <div class="desc">Quality stepper UI bindings exposed on <code>window</code>.
+            <ul>
+                <li><code>updatePerformanceUI()</code>: syncs the GAME DETAILS label and −/+ button disabled states to
+                    <code>QUALITY_GOVERNOR.profileIndex</code> (actual running level, not floor).</li>
+                <li><code>adjustDetails(delta)</code>: <code>delta = +1</code> improves quality (index−1),
+                    <code>delta = -1</code> reduces (index+1). Updates floor, persists to
+                    <code>localStorage</code>, and calls <code>refreshQualitySettings()</code>.</li>
+                <li><code>showQualityToast(msg)</code>: displays a fade-in/out overlay at top-right (below top bar)
+                    for 2.2s. Timer is reset on rapid successive calls.</li>
+            </ul>
+        </div>
+    </div>
 
     <h2 id="audio">07. AUDIO ENGINE</h2>
     <div class="method">
@@ -454,7 +473,82 @@
         </div>
     </div>
 
-    <h2 id="debug">08. DEBUG & OPERATOR HOOKS</h2>
+    <h2 id="performance">08. PERFORMANCE SYSTEMS</h2>
+    <div class="method">
+        <div class="method-name">QUALITY_GOVERNOR / QUALITY_PROFILES / applyQualityProfile()</div>
+        <div class="desc">Three quality presets (indexed 0–2) control VFX budgets per frame.
+            <ul>
+                <li><code>HIGH (0)</code>: 900 particles · 140 lights · 180 arc bursts · arc links (intensity-styled) · full alpha · all effects update every frame.</li>
+                <li><code>MED (1)</code>: 620 particles · 90 lights · 140 arc bursts · arc links (intensity-styled) · chain bursts update every 2 frames.</li>
+                <li><code>LOW (2)</code>: 420 particles · 65 lights · 96 arc bursts · arc links (intensity-styled) · chain bursts every 3 frames.</li>
+            </ul>
+            Arc link visuals are <strong>not</strong> quality-gated; all three presets render the same intensity-based
+            dot → dash → solid-glow progression (see Arc link batching below).
+            <code>QUALITY_GOVERNOR.profileIndex</code> is the active level. The governor auto-downgrades when
+            <code>frameDt &gt; 22ms</code> for 45 consecutive frames, and auto-upgrades when
+            <code>frameDt &lt; 15.8ms</code> for 240 frames. <code>PERFORMANCE_RULES.qualityFloor</code> is the
+            user-set minimum (0/1/2); the governor cannot go above <code>qualityFloor</code> in index terms.
+            <code>PERFORMANCE_RULES.autoDropEnabled</code> (persisted in <code>localStorage</code>) gates the entire
+            downgrade/upgrade logic — when <code>false</code> the governor freezes at the current preset.
+            <code>ARC_TOWER_RULES.lowAnimationMode</code> is set to <code>true</code> whenever
+            <code>qualityFloor &gt; 0</code>; it affects chain-burst stride but <strong>not</strong> arc link visuals.
+        </div>
+    </div>
+    <div class="method">
+        <div class="method-name">ENEMY_SPATIAL_GRID / queryEnemiesInRadius() / queryTauntersInRadius()</div>
+        <div class="desc">Spatial hash grid with <code>cellSize = 200</code> world units. Rebuilt each frame from live
+            enemies. Replaces O(n) distance scans for:
+            <ul>
+                <li>Tower targeting (nearest enemy / nearest taunter in range)</li>
+                <li>Arc chain-bounce candidate selection</li>
+                <li>Base turret targeting</li>
+            </ul>
+            Query results are written into caller-supplied scratch arrays to avoid per-call allocations. Squared
+            distance comparison is used throughout (no <code>Math.hypot</code> in hot paths).
+        </div>
+    </div>
+    <div class="method">
+        <div class="method-name">Render Pipeline — Batching and Caching</div>
+        <div class="desc">Key render optimizations in <code>06_render.js</code>:
+            <ul>
+                <li><strong>Enemy multi-pass batching</strong>: Pass 0 classifies into color buckets and a special list.
+                    Pass 1 draws one <code>beginPath/fill</code> per color (shadow set once). Pass 2 draws healers and
+                    invisible shifters individually. Pass 3 batches elite diamond markers. Pass 4 draws health bars in
+                    two sweeps (red then green); full-HP enemies are skipped entirely.</li>
+                <li><strong>Particle alpha quantization</strong>: 8 discrete alpha levels; one
+                    <code>globalAlpha + beginPath/fill</code> per (level, color) group per frame.</li>
+                <li><strong>Arc link batching</strong>: links are pre-bucketed by intensity level (1–5) in a single
+                    O(N) pass into <code>_linkBuckets[5]</code>. Visual style is driven by the <code>_LINK_STYLES</code>
+                    constant (allocated once at module load, never per-frame):
+                    <ul>
+                        <li>Levels 1–4: <code>lineCap='round'</code> stroke with increasing dash segment lengths
+                            (<code>[1,16]</code> → <code>[2,11]</code> → <code>[5,8]</code> → <code>[12,4]</code>).
+                            The round cap on a 1 px segment renders as a circle dot; longer segments produce pills then
+                            dashes — a continuous visual progression from a single style idiom.</li>
+                        <li>Level 5: double-stroke on the same path (no second <code>beginPath()</code>): a wide
+                            low-alpha halo stroke (10 px, <code>rgba(120,210,255,0.28)</code>) followed by a narrow
+                            high-alpha core stroke (2.4 px, <code>rgba(200,245,255,0.94)</code>). No
+                            <code>shadowBlur</code>; no quality-mode gate.</li>
+                    </ul>
+                    Maximum 5 <code>stroke()</code> calls per frame for levels 1–4; 2 for level 5 (same path,
+                    stroked twice). Total max 6 stroke calls regardless of link count.</li>
+                <li><strong>Arc segment cache</strong>: <code>_arcSegCache</code> map stores typed arrays
+                    (<code>Float32Array</code> / <code>Int8Array</code>) of pre-computed <code>t</code>,
+                    <code>envelope</code>, <code>zig</code>, <code>sinArg</code>, and <code>cosArg</code> per segment
+                    count. Only <code>Math.sin/cos</code> per segment per frame remain in the hot path.</li>
+                <li><strong>Light gradient cache</strong>: radial gradients are pre-baked to offscreen canvases keyed by
+                    <code>(color, radius)</code> and drawn with <code>drawImage</code> each frame. No
+                    <code>createRadialGradient()</code> calls at runtime.</li>
+                <li><strong>Boss hexagon lookup</strong>: <code>_HEX_COS</code> / <code>_HEX_SIN</code>
+                    <code>Float32Array</code> pre-baked from <code>Math.cos/sin(i * Math.PI / 3)</code> — zero trig
+                    calls per boss per frame.</li>
+                <li><strong>globalCompositeOperation: 'screen' eliminated</strong>: removed from arc links, arc bursts,
+                    and dynamic lighting. All use source-over with tuned alpha to avoid GPU framebuffer read-back.</li>
+            </ul>
+        </div>
+    </div>
+
+    <h2 id="debug">09. DEBUG & OPERATOR HOOKS</h2>
     <div class="method">
         <div class="method-name">unlockDebug()</div>
         <div class="desc">SHA-256 password gate for command center visibility.</div>
@@ -472,7 +566,7 @@
         <div class="desc">Visual debug overlay for placement restrictions and map zoning.</div>
     </div>
 
-    <h2 id="progression">09. PROGRESSION DIRECTION (PLANNED)</h2>
+    <h2 id="progression">10. PROGRESSION DIRECTION (PLANNED)</h2>
     <div class="method">
         <div class="method-name">Tech Tree v1</div>
         <div class="desc">Planned strategy layer with four branches:

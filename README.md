@@ -8,9 +8,10 @@ You defend the core against escalating waves, expanding Rift networks, elite pat
 - Single-player endless defense
 - Desktop and mobile touch support
 - Camera pan and zoom
-- Save/load with local storage
+- Auto-save with manual force-save option
 - Interactive onboarding tutorial
 - Inline gameplay hints
+- Dynamic quality governor (HIGH/MED/LOW stepper with auto-drop toast)
 
 ## Core Features
 
@@ -40,6 +41,7 @@ You defend the core against escalating waves, expanding Rift networks, elite pat
 - Neon UI with animated effects
 - Dynamic VFX (particles, flashes, pulses)
 - Procedural Web Audio soundtrack
+- Dynamic quality governor with +/- stepper (HIGH/MED/LOW) and auto-drop toast
 
 ## Controls
 
@@ -52,6 +54,7 @@ You defend the core against escalating waves, expanding Rift networks, elite pat
 - `U`: upgrade selected tower
 - `Delete` / `Backspace`: sell selected tower
 - `Esc`: deselect or pause
+- `GAME DETAILS −/+`: cycle quality preset (HIGH/MED/LOW)
 
 ### Touch
 - Tap: select/interact

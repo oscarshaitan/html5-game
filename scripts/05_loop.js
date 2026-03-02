@@ -66,7 +66,7 @@ const QUALITY_PROFILES = [
 ];
 
 const QUALITY_GOVERNOR = {
-    profileIndex: PERFORMANCE_RULES.enabled ? 1 : 0,
+    profileIndex: PERFORMANCE_RULES.qualityFloor,
     appliedIndex: -1,
     appliedPerformanceMode: PERFORMANCE_RULES.enabled,
     emaFrameMs: 16.7,
@@ -92,6 +92,21 @@ const EFFECT_POOL_LIMITS = {
     lights: 260
 };
 
+// Pre-populate pools so the first heavy combat frame never hits the `|| {}` fallback
+// and triggers GC from fresh heap allocations. Sized to the HIGH quality profile maxima.
+function prewarmEffectPools() {
+    const hp = QUALITY_PROFILES[0]; // HIGH: maxParticles=900, maxLights=140
+    for (let i = EFFECT_POOLS.particles.length; i < hp.maxParticles; i++) {
+        EFFECT_POOLS.particles.push({ x: 0, y: 0, vx: 0, vy: 0, life: 0, color: '', priority: 0, phase: 0 });
+    }
+    for (let i = EFFECT_POOLS.lights.length; i < hp.maxLights; i++) {
+        EFFECT_POOLS.lights.push({ x: 0, y: 0, radius: 0, color: '', life: 0, priority: 0, phase: 0 });
+    }
+    for (let i = EFFECT_POOLS.projectiles.length; i < 200; i++) {
+        EFFECT_POOLS.projectiles.push({ x: 0, y: 0, target: null, speed: 0, damage: 0, color: '', type: '' });
+    }
+}
+
 const EFFECT_BUDGET = {
     frame: -1,
     particles: 0,
@@ -106,8 +121,21 @@ const ENEMY_FRAME_CACHE = {
     hasThreat: false
 };
 
+// Spatial hash grid for O(1) broad-phase enemy lookups.
+// cellSize must be >= chainRange (160) so a single-cell-radius query covers arc bounces.
+// 200 world units also covers tower ranges ≤200 with a 1-cell-radius sweep.
+// Sniper range (250) needs a 2-cell-radius sweep — still far cheaper than a full-list scan.
+const ENEMY_SPATIAL_GRID = {
+    cellSize: 200,
+    cols: 0,
+    rows: 0,
+    cells: null,        // flat Array<Array<enemy>> indexed by row*cols+col
+    taunterCells: null, // same layout, only bulwark enemies
+    initialized: false
+};
+
 function getMinimumQualityProfileIndex() {
-    return PERFORMANCE_RULES.enabled ? 1 : 0;
+    return PERFORMANCE_RULES.qualityFloor;
 }
 
 function getQualityProfile() {
@@ -153,26 +181,40 @@ function updateQualityGovernor(frameDtMs) {
     const stable = frameDtMs < QUALITY_GOVERNOR.upgradeFrameMs
         && QUALITY_GOVERNOR.emaFrameMs < QUALITY_GOVERNOR.upgradeEmaMs;
 
-    QUALITY_GOVERNOR.downgradeCount = stressed ? (QUALITY_GOVERNOR.downgradeCount + 1) : 0;
-    QUALITY_GOVERNOR.upgradeCount = stable ? (QUALITY_GOVERNOR.upgradeCount + 1) : 0;
-
     let changed = false;
-    if (QUALITY_GOVERNOR.downgradeCount >= QUALITY_GOVERNOR.downgradeFramesRequired
-        && QUALITY_GOVERNOR.profileIndex < (QUALITY_PROFILES.length - 1)) {
-        QUALITY_GOVERNOR.profileIndex++;
+    let wasDowngrade = false;
+
+    if (!PERFORMANCE_RULES.autoDropEnabled) {
+        // Auto-drop disabled: keep counts reset so state is clean if re-enabled.
         QUALITY_GOVERNOR.downgradeCount = 0;
         QUALITY_GOVERNOR.upgradeCount = 0;
-        changed = true;
-    } else if (QUALITY_GOVERNOR.upgradeCount >= QUALITY_GOVERNOR.upgradeFramesRequired
-        && QUALITY_GOVERNOR.profileIndex > getMinimumQualityProfileIndex()) {
-        QUALITY_GOVERNOR.profileIndex--;
-        QUALITY_GOVERNOR.downgradeCount = 0;
-        QUALITY_GOVERNOR.upgradeCount = 0;
-        changed = true;
+    } else {
+        QUALITY_GOVERNOR.downgradeCount = stressed ? (QUALITY_GOVERNOR.downgradeCount + 1) : 0;
+        QUALITY_GOVERNOR.upgradeCount = stable ? (QUALITY_GOVERNOR.upgradeCount + 1) : 0;
+
+        if (QUALITY_GOVERNOR.downgradeCount >= QUALITY_GOVERNOR.downgradeFramesRequired
+            && QUALITY_GOVERNOR.profileIndex < (QUALITY_PROFILES.length - 1)) {
+            QUALITY_GOVERNOR.profileIndex++;
+            QUALITY_GOVERNOR.downgradeCount = 0;
+            QUALITY_GOVERNOR.upgradeCount = 0;
+            changed = true;
+            wasDowngrade = true;
+        } else if (QUALITY_GOVERNOR.upgradeCount >= QUALITY_GOVERNOR.upgradeFramesRequired
+            && QUALITY_GOVERNOR.profileIndex > getMinimumQualityProfileIndex()) {
+            QUALITY_GOVERNOR.profileIndex--;
+            QUALITY_GOVERNOR.downgradeCount = 0;
+            QUALITY_GOVERNOR.upgradeCount = 0;
+            changed = true;
+        }
     }
 
     if (changed) {
         applyQualityProfile(true);
+        if (typeof updatePerformanceUI === 'function') updatePerformanceUI();
+        if (wasDowngrade && typeof showQualityToast === 'function') {
+            const names = ['HIGH', 'MED', 'LOW'];
+            showQualityToast(`AUTO: DETAILS → ${names[QUALITY_GOVERNOR.profileIndex] || getQualityProfile().name}`);
+        }
         if (PERF_MONITOR.enabled) {
             console.log(`[QUALITY] ${getQualityProfile().name} | dt=${frameDtMs.toFixed(2)}ms ema=${QUALITY_GOVERNOR.emaFrameMs.toFixed(2)}ms`);
         }
@@ -454,6 +496,99 @@ function refreshThreatPresenceFromAliveSet() {
     }
 }
 
+// --- Spatial grid helpers ---
+
+function _initEnemySpatialGrid() {
+    const cs = ENEMY_SPATIAL_GRID.cellSize;
+    // Use at least WORLD_MIN dimensions so the grid is never zero-sized on first call.
+    const ww = Math.max(WORLD_MIN_COLS, worldCols || WORLD_MIN_COLS) * GRID_SIZE;
+    const wh = Math.max(WORLD_MIN_ROWS, worldRows || WORLD_MIN_ROWS) * GRID_SIZE;
+    ENEMY_SPATIAL_GRID.cols = Math.ceil(ww / cs) + 1;
+    ENEMY_SPATIAL_GRID.rows = Math.ceil(wh / cs) + 1;
+    const total = ENEMY_SPATIAL_GRID.cols * ENEMY_SPATIAL_GRID.rows;
+    ENEMY_SPATIAL_GRID.cells = new Array(total);
+    ENEMY_SPATIAL_GRID.taunterCells = new Array(total);
+    for (let i = 0; i < total; i++) {
+        ENEMY_SPATIAL_GRID.cells[i] = [];
+        ENEMY_SPATIAL_GRID.taunterCells[i] = [];
+    }
+    ENEMY_SPATIAL_GRID.initialized = true;
+}
+
+function _gridIndex(x, y) {
+    const cs = ENEMY_SPATIAL_GRID.cellSize;
+    const col = Math.max(0, Math.min(ENEMY_SPATIAL_GRID.cols - 1, Math.floor(x / cs)));
+    const row = Math.max(0, Math.min(ENEMY_SPATIAL_GRID.rows - 1, Math.floor(y / cs)));
+    return row * ENEMY_SPATIAL_GRID.cols + col;
+}
+
+// Fills `out` with all visible targetable enemies within `radius` of (cx, cy),
+// skipping any enemy present in the optional `exclude` Set.
+// Uses squared-distance to avoid Math.hypot in the inner loop.
+function queryEnemiesInRadius(cx, cy, radius, out, exclude) {
+    out.length = 0;
+    if (!ENEMY_SPATIAL_GRID.initialized) return;
+    const cs = ENEMY_SPATIAL_GRID.cellSize;
+    const cols = ENEMY_SPATIAL_GRID.cols;
+    const rows = ENEMY_SPATIAL_GRID.rows;
+    const cr = Math.min(Math.ceil(radius / cs), Math.max(cols, rows));
+    const cCol = Math.floor(cx / cs);
+    const cRow = Math.floor(cy / cs);
+    const cells = ENEMY_SPATIAL_GRID.cells;
+    const r2 = radius * radius;
+    for (let dr = -cr; dr <= cr; dr++) {
+        const row = cRow + dr;
+        if (row < 0 || row >= rows) continue;
+        for (let dc = -cr; dc <= cr; dc++) {
+            const col = cCol + dc;
+            if (col < 0 || col >= cols) continue;
+            const cell = cells[row * cols + col];
+            for (let i = 0; i < cell.length; i++) {
+                const e = cell[i];
+                if (exclude && exclude.has(e)) continue;
+                const dx = e.x - cx; const dy = e.y - cy;
+                if (dx * dx + dy * dy <= r2) out.push(e);
+            }
+        }
+    }
+}
+
+// Same as queryEnemiesInRadius but queries the taunter (bulwark) sub-grid only.
+function queryTauntersInRadius(cx, cy, radius, out) {
+    out.length = 0;
+    if (!ENEMY_SPATIAL_GRID.initialized) return;
+    const cs = ENEMY_SPATIAL_GRID.cellSize;
+    const cols = ENEMY_SPATIAL_GRID.cols;
+    const rows = ENEMY_SPATIAL_GRID.rows;
+    const cr = Math.min(Math.ceil(radius / cs), Math.max(cols, rows));
+    const cCol = Math.floor(cx / cs);
+    const cRow = Math.floor(cy / cs);
+    const cells = ENEMY_SPATIAL_GRID.taunterCells;
+    const r2 = radius * radius;
+    for (let dr = -cr; dr <= cr; dr++) {
+        const row = cRow + dr;
+        if (row < 0 || row >= rows) continue;
+        for (let dc = -cr; dc <= cr; dc++) {
+            const col = cCol + dc;
+            if (col < 0 || col >= cols) continue;
+            const cell = cells[row * cols + col];
+            for (let i = 0; i < cell.length; i++) {
+                const e = cell[i];
+                const dx = e.x - cx; const dy = e.y - cy;
+                if (dx * dx + dy * dy <= r2) out.push(e);
+            }
+        }
+    }
+}
+
+// Scratch arrays — module-level to avoid per-call allocations.
+const _arcBounceScratch = [];
+const _towerTaunterScratch = [];
+const _towerTargetScratch = [];
+const _baseTurretScratch = [];
+
+// --- End spatial grid helpers ---
+
 function rebuildEnemyFrameCache() {
     const targetable = ENEMY_FRAME_CACHE.targetable;
     const taunters = ENEMY_FRAME_CACHE.taunters;
@@ -462,6 +597,15 @@ function rebuildEnemyFrameCache() {
     ENEMY_FRAME_CACHE.aliveSet.clear();
     ENEMY_FRAME_CACHE.hasThreat = false;
 
+    // Re-init grid if world bounds changed (expandWorldBounds sets initialized=false).
+    if (!ENEMY_SPATIAL_GRID.initialized) _initEnemySpatialGrid();
+    const cells = ENEMY_SPATIAL_GRID.cells;
+    const taunterCells = ENEMY_SPATIAL_GRID.taunterCells;
+    for (let i = 0; i < cells.length; i++) {
+        cells[i].length = 0;
+        taunterCells[i].length = 0;
+    }
+
     for (const enemy of enemies) {
         if (!enemy || enemy.hp <= 0) continue;
         ENEMY_FRAME_CACHE.aliveSet.add(enemy);
@@ -469,7 +613,13 @@ function rebuildEnemyFrameCache() {
         if (enemy.isInvisible) continue;
 
         targetable.push(enemy);
-        if (enemy.type === 'bulwark') taunters.push(enemy);
+        const idx = _gridIndex(enemy.x, enemy.y);
+        cells[idx].push(enemy);
+
+        if (enemy.type === 'bulwark') {
+            taunters.push(enemy);
+            taunterCells[idx].push(enemy);
+        }
     }
 }
 
@@ -907,24 +1057,11 @@ window.debugRebuildRiftsByWave = function () {
     paths = [];
     calculatePath(); // Creates initial rift and hardpoints
 
-    pendingRiftGenerations = Math.max(0, expectedRifts - paths.length);
-    let attempts = 0;
-    let failStreak = 0;
-    const maxAttempts = Math.min(1800, 120 + pendingRiftGenerations * 40);
-    while (pendingRiftGenerations > 0 && attempts < maxAttempts) {
-        const relaxedLevel = failStreak >= 10 ? 2 : (failStreak >= 4 ? 1 : 0);
-        const aggressivePlacement = failStreak >= 16;
-        const created = generateNewPath({ relaxedLevel, aggressivePlacement, suppressLogs: true });
-        if (created) {
-            pendingRiftGenerations--;
-            failStreak = 0;
-        } else {
-            failStreak++;
-        }
-        attempts++;
-    }
+    // Remaining rifts are generated asynchronously by startPrepPhase via the
+    // path worker (C4-17).  pendingRiftGenerations is recomputed there from
+    // (expectedRifts - paths.length), so we don't need to track it here.
 
-    // Enter clean prep state; prep flow keeps retrying backlog if any remains.
+    // Enter clean prep state; async worker generates remaining rifts during prep.
     startPrepPhase();
     AudioEngine.playSFX('build');
     updateSelectionUI();
@@ -1125,6 +1262,11 @@ function addArcLightningBurst(x1, y1, x2, y2, intensity = 1, isChain = false) {
     const priority = isChain ? 0 : 2;
     if (!canSpawnArcBurst(priority)) return;
     if (!reserveArcBurstSlot(priority)) return;
+    // Pre-compute the normalised direction vector once here so render never
+    // calls getArcBurstGeometry() (which allocates a fresh object) per frame.
+    const _bdx = x2 - x1;
+    const _bdy = y2 - y1;
+    const _blen = Math.hypot(_bdx, _bdy);
     arcLightningBursts.push({
         x1,
         y1,
@@ -1134,7 +1276,10 @@ function addArcLightningBurst(x1, y1, x2, y2, intensity = 1, isChain = false) {
         isChain: !!isChain,
         life: isChain ? 7 : 8,
         priority: priority,
-        phase: Math.floor(Math.random() * 3)
+        phase: Math.floor(Math.random() * 3),
+        geom: (_blen > 0.001)
+            ? { dx: _bdx, dy: _bdy, len: _blen, nx: -_bdy / _blen, ny: _bdx / _blen }
+            : null
     });
 }
 
@@ -1143,30 +1288,23 @@ function applyStaticCharges(enemy, amount) {
     if (!enemy || amount <= 0) return;
 
     enemy.staticCharges = Math.max(0, (enemy.staticCharges || 0) + amount);
-    const hitParticles = PERFORMANCE_RULES.enabled
-        ? Math.max(1, Math.floor((Math.min(6, 2 + amount)) * PERFORMANCE_RULES.staticHitParticleScale))
-        : Math.min(6, 2 + amount);
-    createParticles(enemy.x, enemy.y, '#7cd7ff', hitParticles);
 
     while (enemy.staticCharges >= ARC_TOWER_RULES.staticThreshold) {
         enemy.staticCharges -= ARC_TOWER_RULES.staticThreshold;
         enemy.staticStunTimer = Math.max(enemy.staticStunTimer || 0, ARC_TOWER_RULES.stunFrames);
-        createParticles(enemy.x, enemy.y, '#b7eaff', PERFORMANCE_RULES.enabled ? PERFORMANCE_RULES.staticStunParticleCount : 5);
         addLightSource(enemy.x, enemy.y, 70, '#7cd7ff', 1.0, 1);
     }
 }
 
 function findArcBounceTarget(fromX, fromY, visited) {
+    // Spatial grid query replaces the old O(n) full-list scan.
+    queryEnemiesInRadius(fromX, fromY, ARC_TOWER_RULES.chainRange, _arcBounceScratch, visited);
     let target = null;
-    let minDist = Infinity;
-    const candidates = ENEMY_FRAME_CACHE.targetable;
-    for (const enemy of candidates) {
-        if (!enemy || enemy.hp <= 0 || enemy.isInvisible || visited.has(enemy)) continue;
-        const dist = Math.hypot(enemy.x - fromX, enemy.y - fromY);
-        if (dist <= ARC_TOWER_RULES.chainRange && dist < minDist) {
-            minDist = dist;
-            target = enemy;
-        }
+    let minDist2 = Infinity;
+    for (const enemy of _arcBounceScratch) {
+        const dx = enemy.x - fromX; const dy = enemy.y - fromY;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < minDist2) { minDist2 = d2; target = enemy; }
     }
     return target;
 }
@@ -1233,28 +1371,22 @@ function updateTowers() {
         // Find Target
         const range = t.range;
         let target = null;
-        let minDist = Infinity;
-
-        // Taunt Check first
-        let taunterInRange = false;
-        for (const e of taunterEnemies) {
-            const dist = Math.hypot(e.x - t.x, e.y - t.y);
-            if (dist <= range) {
-                taunterInRange = true;
-                if (dist < minDist) {
-                    target = e;
-                    minDist = dist;
-                }
+        // Taunt check first (spatial grid)
+        queryTauntersInRadius(t.x, t.y, range, _towerTaunterScratch);
+        if (_towerTaunterScratch.length > 0) {
+            let minDist2 = Infinity;
+            for (const e of _towerTaunterScratch) {
+                const dx = e.x - t.x; const dy = e.y - t.y;
+                const d2 = dx * dx + dy * dy;
+                if (d2 < minDist2) { minDist2 = d2; target = e; }
             }
-        }
-
-        if (!taunterInRange) {
-            for (const e of targetableEnemies) {
-                const dist = Math.hypot(e.x - t.x, e.y - t.y);
-                if (dist <= range && dist < minDist) {
-                    target = e;
-                    minDist = dist;
-                }
+        } else {
+            queryEnemiesInRadius(t.x, t.y, range, _towerTargetScratch, null);
+            let minDist2 = Infinity;
+            for (const e of _towerTargetScratch) {
+                const dx = e.x - t.x; const dy = e.y - t.y;
+                const d2 = dx * dx + dy * dy;
+                if (d2 < minDist2) { minDist2 = d2; target = e; }
             }
         }
 
@@ -1275,16 +1407,15 @@ function updateTowers() {
 
         // Find target for base
         let target = null;
-        let minDist = Infinity;
         // Base range increases with level: 150, 180, 210
         const currentBaseRange = baseRange + (baseLevel - 1) * 30;
 
-        for (const e of ENEMY_FRAME_CACHE.aliveSet) {
-            const dist = Math.hypot(e.x - baseX, e.y - baseY);
-            if (dist <= currentBaseRange && dist < minDist) {
-                target = e;
-                minDist = dist;
-            }
+        queryEnemiesInRadius(baseX, baseY, currentBaseRange, _baseTurretScratch, null);
+        let minDist2 = Infinity;
+        for (const e of _baseTurretScratch) {
+            const dx = e.x - baseX; const dy = e.y - baseY;
+            const d2 = dx * dx + dy * dy;
+            if (d2 < minDist2) { minDist2 = d2; target = e; }
         }
 
         if (target && baseCooldown <= 0) {
@@ -1487,6 +1618,17 @@ function updateUI(force = false) {
         if (timerEl && timerEl.dataset.uiColor !== '#00ff41') {
             timerEl.dataset.uiColor = '#00ff41';
             timerEl.style.color = '#00ff41';
+        }
+    }
+
+    const fpsEl = document.getElementById('fps-display');
+    if (fpsEl) {
+        const fps = Math.round(1000 / Math.max(1, QUALITY_GOVERNOR.emaFrameMs));
+        const fpsColor = fps >= 55 ? '#00ff41' : fps >= 30 ? '#fcee0a' : '#ff4444';
+        setTextIfChanged(fpsEl, fps);
+        if (fpsEl.dataset.uiColor !== fpsColor) {
+            fpsEl.dataset.uiColor = fpsColor;
+            fpsEl.style.color = fpsColor;
         }
     }
 

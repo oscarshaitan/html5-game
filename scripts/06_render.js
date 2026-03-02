@@ -1,5 +1,88 @@
 // --- Rendering ---
 
+// Pre-allocated intensity buckets for arc link batching (reused each frame, no GC).
+// Index 0..4 corresponds to intensity levels 1..5 (ARC_TOWER_RULES.maxBonus).
+const _linkBuckets = [[], [], [], [], []];
+
+// Arc link stroke styles per intensity level (1-4).
+// lineCap='round' makes very short dashes look like circles; longer dashes naturally
+// emerge as level increases, creating a coherent dot → dash → solid progression.
+// Level 5 is handled separately with a double-stroke neon glow.
+const _LINK_STYLES = [
+    { dash: [1, 16], w: 1.3, color: 'rgba(100, 185, 242, 0.42)' }, // lvl 1: sparse dots
+    { dash: [2, 11], w: 1.6, color: 'rgba(118, 202, 252, 0.55)' }, // lvl 2: small pills
+    { dash: [5,  8], w: 1.8, color: 'rgba(136, 218, 255, 0.67)' }, // lvl 3: short dashes
+    { dash: [12, 4], w: 2.1, color: 'rgba(165, 232, 255, 0.80)' }, // lvl 4: long dashes
+];
+
+// Arc segment base cache: keyed by segment count → typed arrays of per-segment
+// static values (t, envelope, zig, sin-arg, cos-arg).  Only trig (sin/cos) and
+// the position math (bx, by) remain in the hot inner loop.
+const _arcSegCache = new Map();
+function getOrBuildSegmentBases(segments) {
+    if (_arcSegCache.has(segments)) return _arcSegCache.get(segments);
+    const t = new Float32Array(segments);
+    const envelope = new Float32Array(segments);
+    const zig = new Int8Array(segments);
+    const sinArg = new Float32Array(segments);
+    const cosArg = new Float32Array(segments);
+    for (let i = 1; i < segments; i++) {
+        t[i] = i / segments;
+        envelope[i] = 1 - Math.abs((t[i] - 0.5) * 2);
+        zig[i] = (i & 1) ? 1 : -1;
+        sinArg[i] = i * 1.91;
+        cosArg[i] = i * 2.47;
+    }
+    const result = { t, envelope, zig, sinArg, cosArg };
+    _arcSegCache.set(segments, result);
+    return result;
+}
+
+// Pre-baked unit hexagon offsets — eliminates 6 Math.cos/sin calls per boss per frame.
+const _HEX_COS = Float32Array.from({length: 7}, (_, i) => Math.cos(i * Math.PI / 3));
+const _HEX_SIN = Float32Array.from({length: 7}, (_, i) => Math.sin(i * Math.PI / 3));
+
+// Light gradient texture cache: keyed by "color|radius" → offscreen canvas.
+// Lights never move and have a fixed color+radius for their entire lifetime, so the
+// radial gradient only needs to be baked once per unique (color, radius) combination.
+// drawImage is GPU-accelerated and avoids the expensive createRadialGradient + addColorStop
+// calls that were previously fired for every visible light every single frame.
+const LIGHT_GRADIENT_CACHE = new Map();
+
+// --- Per-frame render batch state (module-level, reused each frame) ---
+
+// Projectile batch: color -> flat [x0, y0, x1, y1, ...] pairs.
+// Built and consumed every frame; arrays reused to avoid GC.
+const _projColorBuckets = new Map();
+
+// Enemy body batch: color -> enemy[] — reused each frame.
+const _enemyBodyBuckets = new Map();
+// Enemies that need individual alpha (invisible shifter, healer with conditional stroke).
+const _enemySpecialList = [];
+
+// Particle alpha-quantised batch: PARTICLE_ALPHA_LEVELS Maps of color -> [x,y,...].
+const PARTICLE_ALPHA_LEVELS = 8;
+const _particleAlphaBuckets = Array.from({ length: PARTICLE_ALPHA_LEVELS }, () => new Map());
+
+function getLightGradientTexture(color, radius) {
+    const r = Math.max(1, Math.round(radius));
+    const key = `${color}|${r}`;
+    if (LIGHT_GRADIENT_CACHE.has(key)) return LIGHT_GRADIENT_CACHE.get(key);
+
+    const size = r * 2;
+    const offscreen = document.createElement('canvas');
+    offscreen.width = size;
+    offscreen.height = size;
+    const octx = offscreen.getContext('2d');
+    const grad = octx.createRadialGradient(r, r, 0, r, r, r);
+    grad.addColorStop(0, color);
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    octx.fillStyle = grad;
+    octx.fillRect(0, 0, size, size);
+    LIGHT_GRADIENT_CACHE.set(key, offscreen);
+    return offscreen;
+}
+
 function draw() {
     const perfDraw = perfBegin('draw');
     // Update Screen Shake
@@ -319,41 +402,73 @@ function draw() {
     }
 
 
-    // Draw Enemies
-    for (let e of enemies) {
+    // Draw Enemies — multi-pass batched to reduce canvas state changes.
+    // Pass 0: Classify visible enemies into color buckets or special list.
+    for (const arr of _enemyBodyBuckets.values()) arr.length = 0;
+    _enemySpecialList.length = 0;
+    for (const e of enemies) {
         if (!isWorldPointVisible(e.x, e.y, 140)) continue;
-        ctx.save();
-
-        let alpha = 1.0;
-        if (e.type === 'shifter' && e.isInvisible) {
-            alpha = 0.2; // Very transparent
+        if (e.type === 'healer' || (e.type === 'shifter' && e.isInvisible)) {
+            _enemySpecialList.push(e);
+        } else {
+            let bucket = _enemyBodyBuckets.get(e.color);
+            if (!bucket) { bucket = []; _enemyBodyBuckets.set(e.color, bucket); }
+            bucket.push(e);
         }
-        ctx.globalAlpha = alpha;
+    }
 
+    // Pass 1: Batched body fill — one beginPath + fill per color.
+    ctx.shadowBlur = 10;
+    for (const [color, batch] of _enemyBodyBuckets) {
+        if (!batch.length) continue;
+        ctx.fillStyle = color;
+        ctx.shadowColor = color;
+        ctx.beginPath();
+        for (const e of batch) {
+            if (e.type === 'tank') {
+                ctx.rect(e.x - 10, e.y - 10, 20, 20);
+            } else if (e.type === 'fast') {
+                ctx.moveTo(e.x, e.y - 12);
+                ctx.lineTo(e.x + 6, e.y);
+                ctx.lineTo(e.x, e.y + 8);
+                ctx.lineTo(e.x - 6, e.y);
+                ctx.closePath();
+            } else if (e.type === 'boss') {
+                const size = e.width / 2;
+                ctx.moveTo(e.x + size, e.y);
+                for (let i = 1; i <= 6; i++) {
+                    ctx.lineTo(e.x + size * _HEX_COS[i], e.y + size * _HEX_SIN[i]);
+                }
+                ctx.closePath();
+            } else if (e.type === 'splitter') {
+                ctx.moveTo(e.x, e.y - 14);
+                ctx.lineTo(e.x + 12, e.y + 10);
+                ctx.lineTo(e.x - 12, e.y + 10);
+                ctx.closePath();
+            } else if (e.type === 'mini') {
+                ctx.moveTo(e.x + 6, e.y);
+                ctx.arc(e.x, e.y, 6, 0, Math.PI * 2);
+            } else {
+                const r = e.width ? e.width / 2 : 10;
+                ctx.moveTo(e.x + r, e.y);
+                ctx.arc(e.x, e.y, r, 0, Math.PI * 2);
+            }
+        }
+        ctx.fill();
+    }
+    ctx.shadowBlur = 0;
+
+    // Pass 2: Special enemies (healer, invisible shifter) — drawn individually.
+    for (const e of _enemySpecialList) {
+        ctx.save();
         ctx.fillStyle = e.color;
         ctx.shadowBlur = 10;
         ctx.shadowColor = e.color;
-
-        ctx.beginPath();
-        if (e.type === 'tank') {
-            ctx.rect(e.x - 10, e.y - 10, 20, 20);
-        } else if (e.type === 'fast') {
-            // Vertical Kite / Diamond (Looks better moving in all directions)
-            ctx.moveTo(e.x, e.y - 12); // Top
-            ctx.lineTo(e.x + 6, e.y);  // Right
-            ctx.lineTo(e.x, e.y + 8);  // Bottom
-            ctx.lineTo(e.x - 6, e.y);  // Left
-        } else if (e.type === 'boss') {
-            // Hexagon
-            const size = e.width / 2;
-            ctx.moveTo(e.x + size * Math.cos(0), e.y + size * Math.sin(0));
-            for (let i = 1; i <= 6; i++) {
-                ctx.lineTo(e.x + size * Math.cos(i * 2 * Math.PI / 6), e.y + size * Math.sin(i * 2 * Math.PI / 6));
-            }
-        } else if (e.type === 'healer') {
-            // Circle with a pulsing outer ring
+        if (e.type === 'healer') {
+            ctx.beginPath();
             ctx.arc(e.x, e.y, 14, 0, Math.PI * 2);
             ctx.fill();
+            ctx.shadowBlur = 0;
             if (frameCount % 60 < 20) {
                 ctx.lineWidth = 2;
                 ctx.strokeStyle = '#fff';
@@ -361,69 +476,109 @@ function draw() {
                 ctx.arc(e.x, e.y, 18, 0, Math.PI * 2);
                 ctx.stroke();
             }
-        } else if (e.type === 'splitter') {
-            // Triangle with a "cluster" look
-            ctx.moveTo(e.x, e.y - 14);
-            ctx.lineTo(e.x + 12, e.y + 10);
-            ctx.lineTo(e.x - 12, e.y + 10);
-            ctx.closePath();
-        } else if (e.type === 'mini') {
-            // Small fast dot
-            ctx.arc(e.x, e.y, 6, 0, Math.PI * 2);
         } else {
-            // Basic
-            ctx.arc(e.x, e.y, e.width ? e.width / 2 : 10, 0, Math.PI * 2);
-        }
-        ctx.fill();
-
-        // Restore context to reset alpha for health bar etc.
-        ctx.globalAlpha = 1.0;
-
-        // Elite Visuals (Veteran Rifts): compact single marker above unit.
-        if (e.riftLevel > 1) {
-            const markerY = e.y - (e.width ? e.width / 2 : 10) - 8;
-            const markerSize = Math.min(6, 4 + Math.floor((e.riftLevel - 1) / 2));
-
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.88)';
+            // invisible shifter
+            ctx.globalAlpha = 0.2;
+            const r = e.width ? e.width / 2 : 10;
             ctx.beginPath();
-            ctx.moveTo(e.x, markerY - markerSize);
-            ctx.lineTo(e.x + markerSize, markerY);
-            ctx.lineTo(e.x, markerY + markerSize);
-            ctx.lineTo(e.x - markerSize, markerY);
-            ctx.closePath();
+            ctx.moveTo(e.x + r, e.y);
+            ctx.arc(e.x, e.y, r, 0, Math.PI * 2);
             ctx.fill();
         }
-
-        // Health bar
-        const hpPct = e.hp / e.maxHp;
-        ctx.fillStyle = 'red';
-        ctx.fillRect(e.x - 10, e.y - 15, 20, 3);
-        ctx.fillStyle = '#0f0';
-        ctx.fillRect(e.x - 10, e.y - 15, 20 * hpPct, 3);
-
         ctx.restore();
     }
 
-    // Draw Projectiles
+    // Pass 3: Elite markers — batch all diamonds into one path.
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.88)';
+    ctx.beginPath();
+    const _allVisibleEnemies = _enemySpecialList;
+    for (const [, batch] of _enemyBodyBuckets) {
+        for (const e of batch) {
+            if (e.riftLevel <= 1) continue;
+            const mY = e.y - (e.width ? e.width / 2 : 10) - 8;
+            const ms = Math.min(6, 4 + Math.floor((e.riftLevel - 1) / 2));
+            ctx.moveTo(e.x, mY - ms);
+            ctx.lineTo(e.x + ms, mY);
+            ctx.lineTo(e.x, mY + ms);
+            ctx.lineTo(e.x - ms, mY);
+            ctx.closePath();
+        }
+    }
+    for (const e of _allVisibleEnemies) {
+        if (e.riftLevel <= 1) continue;
+        const mY = e.y - (e.width ? e.width / 2 : 10) - 8;
+        const ms = Math.min(6, 4 + Math.floor((e.riftLevel - 1) / 2));
+        ctx.moveTo(e.x, mY - ms);
+        ctx.lineTo(e.x + ms, mY);
+        ctx.lineTo(e.x, mY + ms);
+        ctx.lineTo(e.x - ms, mY);
+        ctx.closePath();
+    }
+    ctx.fill();
+
+    // Pass 4: Health bars — only for damaged enemies (skip full-HP to save fillRect calls).
+    ctx.fillStyle = 'red';
+    for (const [, batch] of _enemyBodyBuckets) {
+        for (const e of batch) { if (e.hp < e.maxHp) ctx.fillRect(e.x - 10, e.y - 15, 20, 3); }
+    }
+    for (const e of _enemySpecialList) { if (e.hp < e.maxHp) ctx.fillRect(e.x - 10, e.y - 15, 20, 3); }
+    ctx.fillStyle = '#0f0';
+    for (const [, batch] of _enemyBodyBuckets) {
+        for (const e of batch) { if (e.hp < e.maxHp) ctx.fillRect(e.x - 10, e.y - 15, 20 * (e.hp / e.maxHp), 3); }
+    }
+    for (const e of _enemySpecialList) { if (e.hp < e.maxHp) ctx.fillRect(e.x - 10, e.y - 15, 20 * (e.hp / e.maxHp), 3); }
+
+    // Draw Projectiles — batched by color: one path + fill per color instead of per projectile.
+    for (const arr of _projColorBuckets.values()) arr.length = 0;
     for (let p of projectiles) {
         if (!isWorldPointVisible(p.x, p.y, 90)) continue;
-        ctx.fillStyle = p.color;
-        ctx.shadowBlur = 5;
-        ctx.shadowColor = p.color;
+        let bucket = _projColorBuckets.get(p.color);
+        if (!bucket) { bucket = []; _projColorBuckets.set(p.color, bucket); }
+        bucket.push(p.x, p.y);
+    }
+    ctx.shadowBlur = 5;
+    for (const [color, pts] of _projColorBuckets) {
+        if (!pts.length) continue;
+        ctx.fillStyle = color;
+        ctx.shadowColor = color;
         ctx.beginPath();
-        ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+        for (let i = 0; i < pts.length; i += 2) {
+            ctx.moveTo(pts[i] + 3, pts[i + 1]); // moveTo avoids implicit lineTo between arcs
+            ctx.arc(pts[i], pts[i + 1], 3, 0, Math.PI * 2);
+        }
         ctx.fill();
     }
+    ctx.shadowBlur = 0;
     drawArcLightningBursts();
 
-    // Draw Particles
-    for (let p of particles) {
-        if (!isWorldPointVisible(p.x, p.y, 80)) continue;
-        ctx.globalAlpha = p.life;
-        ctx.fillStyle = p.color;
-        ctx.fillRect(p.x, p.y, 3, 3);
-        ctx.globalAlpha = 1.0;
+    // Draw Particles — batched by quantized alpha × color to minimise state changes.
+    for (const bucketMap of _particleAlphaBuckets) {
+        for (const arr of bucketMap.values()) arr.length = 0;
     }
+    for (const p of particles) {
+        if (!isWorldPointVisible(p.x, p.y, 80)) continue;
+        const ai = Math.min(PARTICLE_ALPHA_LEVELS - 1, Math.floor(p.life * PARTICLE_ALPHA_LEVELS));
+        const bucketMap = _particleAlphaBuckets[ai];
+        let arr = bucketMap.get(p.color);
+        if (!arr) { arr = []; bucketMap.set(p.color, arr); }
+        arr.push(p.x, p.y);
+    }
+    for (let ai = 0; ai < PARTICLE_ALPHA_LEVELS; ai++) {
+        const bucketMap = _particleAlphaBuckets[ai];
+        let hasContent = false;
+        for (const arr of bucketMap.values()) { if (arr.length) { hasContent = true; break; } }
+        if (!hasContent) continue;
+        ctx.globalAlpha = (ai + 1) / PARTICLE_ALPHA_LEVELS;
+        for (const [color, pts] of bucketMap) {
+            if (!pts.length) continue;
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            for (let i = 0; i < pts.length; i += 2) ctx.rect(pts[i], pts[i + 1], 3, 3);
+            ctx.fill();
+        }
+    }
+    ctx.globalAlpha = 1.0;
     perfEnd('drawWorld', perfDrawWorld);
 
     // Draw Placement Preview
@@ -564,20 +719,16 @@ function draw() {
     perfEnd('drawStatus', perfDrawStatus);
 
     // --- Dynamic Lighting Rendering ---
+    // screen blend removed — source-over with higher alpha avoids GPU read-back per light.
+    // HIGH keeps stronger alpha; LOW/MED uses lighter to compensate for no additive blend.
     const perfDrawLighting = perfBegin('drawLighting');
+    const _lightAlphaScale = ARC_TOWER_RULES.lowAnimationMode ? 0.38 : 0.55;
     ctx.save();
-    ctx.globalCompositeOperation = 'screen';
     for (const light of lightSources) {
         if (!isWorldPointVisible(light.x, light.y, light.radius + 40)) continue;
-        const gradient = ctx.createRadialGradient(light.x, light.y, 0, light.x, light.y, light.radius);
-        gradient.addColorStop(0, light.color);
-        gradient.addColorStop(1, 'rgba(0,0,0,0)');
-
-        ctx.globalAlpha = light.life * 0.5;
-        ctx.fillStyle = gradient;
-        ctx.beginPath();
-        ctx.arc(light.x, light.y, light.radius, 0, Math.PI * 2);
-        ctx.fill();
+        const tex = getLightGradientTexture(light.color, light.radius);
+        ctx.globalAlpha = light.life * _lightAlphaScale;
+        ctx.drawImage(tex, light.x - light.radius, light.y - light.radius, light.radius * 2, light.radius * 2);
     }
     ctx.restore();
     perfEnd('drawLighting', perfDrawLighting);
@@ -791,73 +942,53 @@ function drawArcTowerLinks() {
     if (ARC_TOWER_RULES.disableCalculationsForPerfTest) return;
     if (!arcTowerLinks || arcTowerLinks.length === 0) return;
 
-    if (ARC_TOWER_RULES.lowAnimationMode) {
-        ctx.save();
-        ctx.lineCap = 'round';
-        for (const link of arcTowerLinks) {
-            if (!link || !link.a || !link.b) continue;
-            if (!isWorldPointVisible(link.a.x, link.a.y, 120) && !isWorldPointVisible(link.b.x, link.b.y, 120)) continue;
-
-            const intensity = Math.max(1, Math.min(ARC_TOWER_RULES.maxBonus, link.strength || 1));
-            ctx.strokeStyle = `rgba(176, 233, 255, ${0.18 + intensity * 0.08})`;
-            ctx.lineWidth = 0.8 + intensity * 0.32;
-            ctx.beginPath();
-            ctx.moveTo(link.a.x, link.a.y);
-            ctx.lineTo(link.b.x, link.b.y);
-            ctx.stroke();
-        }
-        ctx.restore();
-        return;
-    }
-
-    ctx.save();
-    ctx.globalCompositeOperation = 'screen';
-    const linkCount = arcTowerLinks.length;
-    const heavyMode = linkCount > 80;
-    const ultraMode = linkCount > 140;
-
+    // Bucket all visible links by intensity (one pass, no GC).
+    const MAX_INT = ARC_TOWER_RULES.maxBonus;
+    for (let i = 0; i < MAX_INT; i++) _linkBuckets[i].length = 0;
     for (const link of arcTowerLinks) {
         if (!link || !link.a || !link.b) continue;
         if (!isWorldPointVisible(link.a.x, link.a.y, 140) && !isWorldPointVisible(link.b.x, link.b.y, 140)) continue;
-        const intensity = Math.max(1, Math.min(ARC_TOWER_RULES.maxBonus, link.strength || 1));
-        const dashOffset = -(frameCount * (1.6 + intensity * 0.42));
-        const coreWidth = 0.8 + intensity * 0.45;
+        _linkBuckets[Math.max(0, Math.min(MAX_INT - 1, (link.strength || 1) - 1))].push(link);
+    }
 
-        if (!ultraMode) {
-            // Soft outer glow
-            ctx.strokeStyle = `rgba(124, 215, 255, ${0.16 + intensity * 0.07})`;
-            ctx.lineWidth = coreWidth + 2.2;
-            ctx.beginPath();
+    // All levels use the same stroke idiom (no dot-fill switching).
+    // lineCap='round' makes very short dashes render as circles at low levels,
+    // naturally elongating into dashes then merging into a solid line at max level.
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineDashOffset = 0;
+
+    for (let lvl = 1; lvl <= MAX_INT; lvl++) {
+        const bucket = _linkBuckets[lvl - 1];
+        if (bucket.length === 0) continue;
+
+        // Build the path once; stroke once (or twice for level-5 glow).
+        ctx.beginPath();
+        for (const link of bucket) {
             ctx.moveTo(link.a.x, link.a.y);
             ctx.lineTo(link.b.x, link.b.y);
-            ctx.stroke();
         }
 
-        // Racing electric dash
-        ctx.strokeStyle = `rgba(214, 244, 255, ${0.35 + intensity * 0.08})`;
-        ctx.lineWidth = coreWidth;
-        ctx.setLineDash(heavyMode ? [6, 10] : [8, Math.max(5, 16 - intensity)]);
-        ctx.lineDashOffset = dashOffset;
-        ctx.beginPath();
-        ctx.moveTo(link.a.x, link.a.y);
-        ctx.lineTo(link.b.x, link.b.y);
-        ctx.stroke();
-        ctx.setLineDash([]);
-
-        if (!heavyMode) {
-            // Travel pulse marker
-            const phase = (frameCount * 0.018 + ((link.a.x + link.a.y + link.b.x + link.b.y) * 0.0007)) % 1;
-            const px = link.a.x + (link.b.x - link.a.x) * phase;
-            const py = link.a.y + (link.b.y - link.a.y) * phase;
-            ctx.fillStyle = '#e6f8ff';
-            ctx.shadowBlur = 10 + intensity * 2;
-            ctx.shadowColor = '#9fe3ff';
-            ctx.beginPath();
-            ctx.arc(px, py, 1.5 + intensity * 0.35, 0, Math.PI * 2);
-            ctx.fill();
+        if (lvl < MAX_INT) {
+            const s = _LINK_STYLES[lvl - 1];
+            ctx.strokeStyle = s.color;
+            ctx.lineWidth = s.w;
+            ctx.setLineDash(s.dash);
+            ctx.stroke();
+        } else {
+            // Level 5: solid line with neon glow.
+            // Two strokes on the same path: wide soft halo, then sharp bright core.
+            ctx.setLineDash([]);
+            ctx.strokeStyle = 'rgba(120, 210, 255, 0.28)';  // halo — wide, diffuse
+            ctx.lineWidth = 10;
+            ctx.stroke();
+            ctx.strokeStyle = 'rgba(200, 245, 255, 0.94)';  // core — narrow, bright
+            ctx.lineWidth = 2.4;
+            ctx.stroke();
         }
     }
 
+    ctx.setLineDash([]);
     ctx.restore();
 }
 
@@ -879,17 +1010,17 @@ function traceElectricArcPath(burst, geom, segments, amplitudeScale = 1) {
     const intensity = Math.max(1, Math.min(ARC_TOWER_RULES.maxBonus, burst.intensity || 1));
     const ampBase = (2.2 + intensity * 0.7) * amplitudeScale;
     const phase = (frameCount * 0.55) + ((burst.phase || 0) * 2.31) + (burst.isChain ? 1.7 : 0);
+    const phase73 = phase * 0.73;
+    const { t, envelope, zig, sinArg, cosArg } = getOrBuildSegmentBases(segments);
 
     ctx.beginPath();
     ctx.moveTo(burst.x1, burst.y1);
     for (let i = 1; i < segments; i++) {
-        const t = i / segments;
-        const bx = burst.x1 + geom.dx * t;
-        const by = burst.y1 + geom.dy * t;
-        const envelope = 1 - Math.abs((t - 0.5) * 2);
-        const zig = (i & 1) ? 1 : -1;
-        const jitter = (Math.sin(phase + i * 1.91) * 0.85) + (Math.cos(phase * 0.73 + i * 2.47) * 0.55);
-        const offset = (zig * ampBase + jitter * ampBase * 0.65) * envelope;
+        const ti = t[i];
+        const bx = burst.x1 + geom.dx * ti;
+        const by = burst.y1 + geom.dy * ti;
+        const jitter = (Math.sin(phase + sinArg[i]) * 0.85) + (Math.cos(phase73 + cosArg[i]) * 0.55);
+        const offset = (zig[i] * ampBase + jitter * ampBase * 0.65) * envelope[i];
         ctx.lineTo(bx + geom.nx * offset, by + geom.ny * offset);
     }
     ctx.lineTo(burst.x2, burst.y2);
@@ -928,7 +1059,7 @@ function drawArcLightningBursts() {
 
             const alpha = Math.max(0, Math.min(1, burst.life / (burst.isChain ? 7 : 8)));
             const intensity = Math.max(1, Math.min(ARC_TOWER_RULES.maxBonus, burst.intensity || 1));
-            const geom = getArcBurstGeometry(burst);
+            const geom = burst.geom;
             if (!geom) continue;
 
             // Keep direct tower shots visible every frame with fixed-cost styling.
@@ -968,8 +1099,11 @@ function drawArcLightningBursts() {
         return;
     }
 
+    // HIGH animation: screen blend removed — GPU read-back cost eliminated.
+    // Per-burst paths are unavoidable (each arc has unique jitter), but compositing
+    // at default source-over is ~4× cheaper than screen for a large canvas.
     ctx.save();
-    ctx.globalCompositeOperation = 'screen';
+    ctx.lineCap = 'round';
     const burstCount = arcLightningBursts.length;
     const heavyMode = burstCount > 160;
 
@@ -977,19 +1111,18 @@ function drawArcLightningBursts() {
         if (!isWorldPointVisible(burst.x1, burst.y1, 140) && !isWorldPointVisible(burst.x2, burst.y2, 140)) continue;
         const alpha = Math.max(0, Math.min(1, burst.life / (burst.isChain ? 7 : 8)));
         const intensity = Math.max(1, Math.min(ARC_TOWER_RULES.maxBonus, burst.intensity || 1));
-        const geom = getArcBurstGeometry(burst);
+        const geom = burst.geom;
         if (!geom) continue;
         const points = heavyMode ? 4 : 7;
 
         traceElectricArcPath(burst, geom, points, heavyMode ? 0.95 : 1.25);
-
-        ctx.strokeStyle = `rgba(236, 250, 255, ${(heavyMode ? 0.55 : 0.7) * alpha})`;
+        ctx.strokeStyle = `rgba(236, 250, 255, ${(heavyMode ? 0.7 : 0.85) * alpha})`;
         ctx.lineWidth = (heavyMode ? 0.9 : 1) + intensity * 0.15;
         ctx.stroke();
 
         if (!heavyMode) {
             traceElectricArcPath(burst, geom, points + 1, 0.62);
-            ctx.strokeStyle = `rgba(130, 220, 255, ${0.26 * alpha})`;
+            ctx.strokeStyle = `rgba(160, 230, 255, ${0.38 * alpha})`;
             ctx.lineWidth = 3 + intensity * 0.45;
             ctx.stroke();
         }
@@ -999,7 +1132,7 @@ function drawArcLightningBursts() {
         if (!burst.isChain) {
             const pulse = 1 - alpha;
             const radius = 6 + (pulse * (8 + intensity * 0.8));
-            ctx.strokeStyle = `rgba(188, 244, 255, ${0.48 * alpha})`;
+            ctx.strokeStyle = `rgba(188, 244, 255, ${0.55 * alpha})`;
             ctx.lineWidth = 1.1 + intensity * 0.22;
             ctx.beginPath();
             ctx.arc(burst.x1, burst.y1, radius, 0, Math.PI * 2);

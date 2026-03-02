@@ -65,6 +65,9 @@ window.onload = () => {
         }
     });
 
+    // Pre-warm effect pools before first frame so heavy combat never hits the {} fallback
+    prewarmEffectPools();
+
     // Start Loop
     requestAnimationFrame(gameLoop);
 };
@@ -140,7 +143,7 @@ function setupInput() {
         let newZoom = camera.zoom + (direction * zoomSpeed);
 
         // Clamp
-        newZoom = Math.max(0.1, Math.min(newZoom, 3.0));
+        newZoom = Math.max(0.1, Math.min(newZoom, 1.0));
 
         // Zoom towards mouse pointer logic
         const rect = canvas.getBoundingClientRect();
@@ -221,7 +224,7 @@ function setupInput() {
             if (currentDist > 0) {
                 const scale = currentDist / initialPinchDist;
                 let newZoom = lastZoom * scale;
-                newZoom = Math.max(0.1, Math.min(newZoom, 3.0));
+                newZoom = Math.max(0.1, Math.min(newZoom, 1.0));
 
                 // Zoom center logic could be added here (complex), for now center screen zoom or just zoom
                 // To zoom at center of pinch:

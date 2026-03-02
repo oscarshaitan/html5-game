@@ -262,9 +262,11 @@ window.setSFXVolume = function (val) {
 };
 
 window.saveGame = function () {
-    // Simple serialization
+    // Snapshot all mutable state before deferring, so the save reflects the
+    // moment saveGame() was called even if the idle callback fires later.
     const data = {
-        money, lives, wave, isWaveActive, prepTimer, spawnQueue, paths,
+        money, lives, wave, isWaveActive, prepTimer, spawnQueue,
+        paths: paths.map(p => ({ points: p.points, level: p.level, zone: p.zone, mutation: p.mutation || null })),
         towers: towers.map(t => ({
             type: t.type, x: t.x, y: t.y, level: t.level,
             damage: t.damage, range: t.range, cooldown: t.cooldown, maxCooldown: t.maxCooldown,
@@ -280,8 +282,17 @@ window.saveGame = function () {
         worldRows
     };
 
-    localStorage.setItem('neonDefenseSave', JSON.stringify(data));
-    console.log("Game Saved");
+    // Defer JSON.stringify + localStorage.setItem off the render frame (C4-18).
+    // timeout:5000 ensures the write completes within 5 s even under heavy load.
+    const doSave = () => {
+        localStorage.setItem('neonDefenseSave', JSON.stringify(data));
+        console.log("Game Saved");
+    };
+    if (typeof requestIdleCallback === 'function') {
+        requestIdleCallback(doSave, { timeout: 5000 });
+    } else {
+        doSave();
+    }
 };
 
 window.loadGame = function () {
@@ -639,6 +650,107 @@ function resetGameLogic() {
     updateUI();
 }
 
+// ---------------------------------------------------------------------------
+// Path Worker Management (C4-17) — async rift generation via Web Worker.
+// ---------------------------------------------------------------------------
+
+let _pathWorker = null;
+let _pathWorkerBusy = false;
+
+function _getPathWorker() {
+    if (!_pathWorker) {
+        _pathWorker = new Worker('scripts/workers/path_worker.js');
+        _pathWorker.onmessage = _onPathWorkerMessage;
+        _pathWorker.onerror = function (e) {
+            console.error('[PathWorker] Error:', e.message);
+            _pathWorkerBusy = false;
+        };
+    }
+    return _pathWorker;
+}
+
+/** Apply one generated rift to game state (side-effects from generateNewPath). */
+function _applyGeneratedRift(newPathPoints, foundZone) {
+    paths.push({ points: newPathPoints, level: 1, zone: foundZone });
+
+    // Destroy any towers sitting on the new path.
+    for (let i = towers.length - 1; i >= 0; i--) {
+        const t = towers[i];
+        if (t.hardpointId) continue;
+        const tolerance = GRID_SIZE / 2;
+        let hit = false;
+        for (let j = 0; j < newPathPoints.length - 1; j++) {
+            const p1 = newPathPoints[j];
+            const p2 = newPathPoints[j + 1];
+            if (Math.abs(p1.y - p2.y) < 1) {
+                if (Math.abs(t.y - p1.y) < tolerance
+                    && t.x >= Math.min(p1.x, p2.x) - tolerance
+                    && t.x <= Math.max(p1.x, p2.x) + tolerance) { hit = true; break; }
+            } else {
+                if (Math.abs(t.x - p1.x) < tolerance
+                    && t.y >= Math.min(p1.y, p2.y) - tolerance
+                    && t.y <= Math.max(p1.y, p2.y) + tolerance) { hit = true; break; }
+            }
+        }
+        if (hit) {
+            money += Math.floor((t.cost * t.level) * 0.7);
+            createParticles(t.x, t.y, '#fff', 10);
+            towers.splice(i, 1);
+            markArcNetworkDirty();
+        }
+    }
+    updateUI();
+}
+
+function _onPathWorkerMessage(e) {
+    const msg = e.data;
+    if (msg.type === 'path_ready') {
+        _applyGeneratedRift(msg.newPathPoints, msg.foundZone);
+        pendingRiftGenerations = Math.max(0, pendingRiftGenerations - 1);
+    } else if (msg.type === 'batch_done') {
+        _pathWorkerBusy = false;
+        if (msg.remaining > 0) {
+            console.warn(`[RIFT BACKLOG] Worker finished with ${msg.remaining} unplaced rifts.`);
+            pendingRiftGenerations = Math.max(pendingRiftGenerations, msg.remaining);
+        }
+        // If startPrepPhase was called while worker was busy (and silently skipped
+        // _requestRiftGeneration), continue the work now that the worker is free.
+        if (pendingRiftGenerations > 0) {
+            const maxAttempts = Math.min(1800, 120 + pendingRiftGenerations * 40);
+            _requestRiftGeneration(pendingRiftGenerations, maxAttempts);
+        }
+    }
+}
+
+/**
+ * Kick off async rift generation via the worker.
+ * count     — number of rifts to generate.
+ * maxAttempts — hard ceiling on total A* attempts inside the worker.
+ */
+function _requestRiftGeneration(count, maxAttempts) {
+    if (_pathWorkerBusy || count <= 0) return;
+    _pathWorkerBusy = true;
+    const { cols, rows } = getWorldGridSize();
+    const serializedPaths = paths.map(p => ({
+        points: p.points.map(pt => ({ x: pt.x, y: pt.y })),
+        zone: p.zone || 1
+    }));
+    const serializedHardpoints = hardpoints.map(hp => ({ c: hp.c, r: hp.r, type: hp.type }));
+    _getPathWorker().postMessage({
+        type: 'generate_batch',
+        state: {
+            cols, rows, wave,
+            gridSize: GRID_SIZE,
+            zone0Radius: ZONE0_RADIUS_CELLS,
+            pathingRules: PATHING_RULES,
+            paths: serializedPaths,
+            hardpoints: serializedHardpoints,
+            count,
+            maxAttempts: maxAttempts || Math.min(1800, 120 + count * 40)
+        }
+    });
+}
+
 function getExpectedRiftCountByWave(currentWave) {
     let scheduled = 0;
     for (let w = 2; w <= currentWave; w++) {
@@ -683,24 +795,9 @@ function startPrepPhase() {
     }
 
     if (pendingRiftGenerations > 0) {
-        let attempts = 0;
-        let failStreak = 0;
-        const maxAttempts = Math.min(420, 24 + pendingRiftGenerations * 12);
-        while (pendingRiftGenerations > 0 && attempts < maxAttempts) {
-            const relaxedLevel = failStreak >= 9 ? 2 : (failStreak >= 3 ? 1 : 0);
-            const aggressivePlacement = failStreak >= 14;
-            const created = generateNewPath({ relaxedLevel, aggressivePlacement, suppressLogs: true });
-            if (created) {
-                pendingRiftGenerations--;
-                failStreak = 0;
-            } else {
-                failStreak++;
-            }
-            attempts++;
-        }
-        if (pendingRiftGenerations > 0) {
-            console.warn(`[RIFT BACKLOG] Pending generations: ${pendingRiftGenerations}`);
-        }
+        // Async: no frame-budget concern, so use the larger resetGame formula.
+        const maxAttempts = Math.min(1800, 120 + pendingRiftGenerations * 40);
+        _requestRiftGeneration(pendingRiftGenerations, maxAttempts);
     }
 }
 

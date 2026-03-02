@@ -832,6 +832,113 @@ button:hover {
     opacity: 0.8;
 }
 
+/* --- Game Details stepper --- */
+#details-stepper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+}
+
+.details-label-text {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.65rem;
+    color: var(--neon-blue);
+    letter-spacing: 1px;
+    opacity: 0.85;
+}
+
+.details-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.details-controls #details-label {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.85rem;
+    color: var(--neon-green);
+    min-width: 36px;
+    text-align: center;
+    letter-spacing: 1px;
+}
+
+.details-step-btn {
+    background: transparent;
+    border: 1px solid var(--neon-blue);
+    color: var(--neon-blue);
+    cursor: pointer;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 1rem;
+    line-height: 1;
+    padding: 2px 9px;
+    transition: all 0.15s;
+    box-shadow: none;
+}
+
+.details-step-btn:hover:not(:disabled) {
+    background: var(--neon-blue);
+    color: black;
+    box-shadow: 0 0 8px var(--neon-blue);
+}
+
+.details-step-btn:disabled {
+    opacity: 0.25;
+    cursor: default;
+}
+
+.auto-drop-btn {
+    background: transparent;
+    border: 1px solid var(--neon-green);
+    color: var(--neon-green);
+    cursor: pointer;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.6rem;
+    letter-spacing: 0.8px;
+    padding: 2px 8px;
+    transition: all 0.15s;
+    width: 100%;
+}
+
+.auto-drop-btn:hover {
+    background: rgba(0, 255, 65, 0.12);
+    box-shadow: 0 0 6px rgba(0, 255, 65, 0.4);
+}
+
+.auto-drop-btn.auto-drop-off {
+    border-color: rgba(255, 255, 255, 0.25);
+    color: rgba(255, 255, 255, 0.3);
+}
+
+.auto-drop-btn.auto-drop-off:hover {
+    background: rgba(255, 255, 255, 0.05);
+    box-shadow: none;
+}
+
+/* --- Quality auto-adjust toast --- */
+.quality-toast {
+    position: absolute;
+    top: 62px;
+    right: 18px;
+    background: rgba(0, 0, 0, 0.82);
+    color: #fcee0a;
+    border: 1px solid #fcee0a;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.68rem;
+    letter-spacing: 1px;
+    padding: 6px 14px;
+    pointer-events: none;
+    z-index: 9999;
+    opacity: 0;
+    transition: opacity 0.35s ease;
+    box-shadow: 0 0 10px rgba(252, 238, 10, 0.4);
+}
+
+.quality-toast.visible {
+    opacity: 1;
+}
+
 #wave-info-panel {
     position: absolute;
     top: 75px;

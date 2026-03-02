@@ -49,6 +49,9 @@ const TOWERS = {
     sniper: { cost: 200, range: 250, damage: 50, cooldown: 90, color: '#ff00ac', type: 'sniper' },
     arc: { cost: 180, range: 100, damage: 8, cooldown: 34, color: '#7cd7ff', type: 'arc' }
 };
+// Hard cap on tower range to prevent spatial-grid query loops from scaling with level.
+// At cellSize=200, a range of 800 needs cr=4 → (2*4+1)²=81 cell sweeps — well within budget.
+const MAX_TOWER_RANGE = 800;
 
 const ARC_TOWER_RULES = {
     // Temporary perf test switch: disables Arc-specific calculations and VFX.
@@ -66,8 +69,22 @@ const ARC_TOWER_RULES = {
     lowAnimationMode: true
 };
 
+// qualityFloor: 0=HIGH, 1=MED, 2=LOW — the minimum profile the governor can run.
+// Migrates old 'on'/'off' values from the boolean era.
+(function () {
+    const stored = localStorage.getItem(PERFORMANCE_MODE_KEY);
+    let floor = 0;
+    if (stored === '1') floor = 1;
+    else if (stored === '2') floor = 2;
+    else if (stored === 'on') floor = 1;   // legacy
+    // 'off', '0', null → 0
+    window._initialQualityFloor = floor;
+}());
+
 const PERFORMANCE_RULES = {
-    enabled: localStorage.getItem(PERFORMANCE_MODE_KEY) !== 'off',
+    qualityFloor: window._initialQualityFloor,
+    enabled: window._initialQualityFloor > 0,   // kept for backward compat with game logic
+    autoDropEnabled: localStorage.getItem('neonAutoDropEnabled') !== 'false',
     staticLabelNearCursorRadius: 95,
     statusHalfRateEnemyThreshold: 26,
     staticHitParticleScale: 0.45,
@@ -76,18 +93,66 @@ const PERFORMANCE_RULES = {
 };
 ARC_TOWER_RULES.lowAnimationMode = PERFORMANCE_RULES.enabled;
 
+const _DETAIL_NAMES = ['HIGH', 'MED', 'LOW'];
+
 function updatePerformanceUI() {
-    const btn = document.getElementById('performance-mode-btn');
-    if (!btn) return;
-    btn.innerText = `PERFORMANCE: ${PERFORMANCE_RULES.enabled ? 'ON' : 'OFF'}`;
+    const labelEl = document.getElementById('details-label');
+    const minusBtn = document.getElementById('details-btn-minus');
+    const plusBtn = document.getElementById('details-btn-plus');
+    const autoBtn = document.getElementById('auto-drop-btn');
+    if (!labelEl) return;
+    // Always reflect the actual running profile so auto-drops are visible in the menu.
+    const actualIdx = (typeof QUALITY_GOVERNOR !== 'undefined')
+        ? Math.max(0, Math.min(2, QUALITY_GOVERNOR.profileIndex))
+        : PERFORMANCE_RULES.qualityFloor;
+    labelEl.textContent = _DETAIL_NAMES[actualIdx] || 'HIGH';
+    if (minusBtn) minusBtn.disabled = actualIdx >= 2;
+    if (plusBtn)  plusBtn.disabled  = actualIdx <= 0;
+    if (autoBtn) {
+        const on = PERFORMANCE_RULES.autoDropEnabled;
+        autoBtn.textContent = on ? 'AUTO: ON' : 'AUTO: OFF';
+        autoBtn.classList.toggle('auto-drop-off', !on);
+    }
 }
 
-window.togglePerformanceMode = function () {
-    PERFORMANCE_RULES.enabled = !PERFORMANCE_RULES.enabled;
+// delta = +1 → improve quality (go to HIGH), delta = -1 → reduce quality (go to LOW)
+window.adjustDetails = function (delta) {
+    const actualIdx = (typeof QUALITY_GOVERNOR !== 'undefined')
+        ? Math.max(0, Math.min(2, QUALITY_GOVERNOR.profileIndex))
+        : PERFORMANCE_RULES.qualityFloor;
+    const newIdx = Math.max(0, Math.min(2, actualIdx - delta));
+    if (newIdx === actualIdx) return;
+    PERFORMANCE_RULES.qualityFloor = newIdx;
+    PERFORMANCE_RULES.enabled = newIdx > 0;
     ARC_TOWER_RULES.lowAnimationMode = PERFORMANCE_RULES.enabled;
-    localStorage.setItem(PERFORMANCE_MODE_KEY, PERFORMANCE_RULES.enabled ? 'on' : 'off');
+    localStorage.setItem(PERFORMANCE_MODE_KEY, String(newIdx));
     if (typeof refreshQualitySettings === 'function') refreshQualitySettings();
     updatePerformanceUI();
+};
+
+window.toggleAutoDrop = function () {
+    PERFORMANCE_RULES.autoDropEnabled = !PERFORMANCE_RULES.autoDropEnabled;
+    localStorage.setItem('neonAutoDropEnabled', String(PERFORMANCE_RULES.autoDropEnabled));
+    updatePerformanceUI();
+};
+
+// Kept for any legacy callers
+window.togglePerformanceMode = function () {
+    window.adjustDetails(PERFORMANCE_RULES.qualityFloor > 0 ? 1 : -1);
+};
+
+let _toastTimer = null;
+window.showQualityToast = function (msg) {
+    const el = document.getElementById('quality-toast');
+    if (!el) return;
+    el.textContent = msg;
+    el.classList.remove('hidden');
+    el.classList.add('visible');
+    if (_toastTimer) clearTimeout(_toastTimer);
+    _toastTimer = setTimeout(() => {
+        el.classList.remove('visible');
+        setTimeout(() => el.classList.add('hidden'), 350);
+    }, 2800);
 };
 
 window.toggleNoBuildOverlay = function () {

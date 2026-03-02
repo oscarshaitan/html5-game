@@ -815,7 +815,7 @@ window.upgradeTower = function () {
         money -= cost;
         selectedPlacedTower.level++;
         selectedPlacedTower.damage *= 1.2;
-        selectedPlacedTower.range *= 1.1;
+        selectedPlacedTower.range = Math.min(selectedPlacedTower.range * 1.1, MAX_TOWER_RANGE);
         selectedPlacedTower.totalCost = (selectedPlacedTower.totalCost || (selectedPlacedTower.cost * (selectedPlacedTower.level - 1))) + cost;
         createParticles(selectedPlacedTower.x, selectedPlacedTower.y, '#00ff41', 15);
         updateSelectionUI();

@@ -328,7 +328,7 @@
 
 <body>
     <h1>NEON DEFENSE</h1>
-    <p style="text-align: center; font-style: italic;">OPERATIONS MANUAL V2.3</p>
+    <p style="text-align: center; font-style: italic;">OPERATIONS MANUAL V2.4</p>
 
     <h2>01. MISSION OBJECTIVE</h2>
     <p>Protect the <span class="green">CORE</span>. Enemies enter through active rifts and move toward the center of
@@ -356,6 +356,8 @@
         <li><span class="key">Mouse Wheel</span> Zoom camera</li>
         <li><span class="key">Start Wave Button</span> Skip prep timer and launch immediately</li>
         <li><span class="key">Recenter Button</span> Snap camera back to Core</li>
+        <li><span class="key">GAME DETAILS −</span> Step quality down (HIGH → MED → LOW)</li>
+        <li><span class="key">GAME DETAILS +</span> Step quality up (LOW → MED → HIGH)</li>
         <li><span class="key">Touch Drag</span> Pan camera (mobile)</li>
         <li><span class="key">Pinch</span> Zoom camera (mobile)</li>
     </ul>
@@ -396,8 +398,10 @@
         </div>
         <div>
             <strong>Arc Tower</strong><br>
-            Cost: $180. Applies Static charges, stuns targets at 100 charges, and chains lightning. Arc towers linked at
-            3 grid tiles or less gain shared bonus up to x5.
+            Cost: $180. Accumulates <span class="highlight">Static charges</span> on each hit; at 100 charges the
+            target is stunned for 0.5s. Lightning chains up to <code>baseChainTargets</code> additional enemies per
+            shot. Arc towers within 3 grid tiles share a network bonus up to <span class="highlight">x5</span> damage
+            and fire-rate.
         </div>
     </div>
     <ul>
@@ -633,12 +637,51 @@
         </div>
     </div>
 
-    <h2>08. AUDIO & SAVES</h2>
+    <h2>08. AUDIO, SAVES & DISPLAY</h2>
     <ul>
         <li><span class="highlight">Adaptive Audio</span>: 15 rotating normal melodies with dynamic threat mode.</li>
         <li><span class="highlight">Pause Audio Controls</span>: music, SFX, and master mute are persisted in local storage.</li>
-        <li><span class="highlight">Save System</span>: supports auto-save and manual <strong>FORCE SAVE</strong>.</li>
+        <li><span class="highlight">Save System</span>: auto-saves on key events (wave start, tower builds, ability use); manual <strong>FORCE SAVE</strong> available in the pause menu.</li>
     </ul>
+
+    <h3>GAME DETAILS Quality Levels</h3>
+    <p>Use the <span class="key">−</span> / <span class="key">+</span> stepper in the top bar to set your quality preset.
+        The governor will auto-drop one level when the frame rate drops below target, and auto-restore when stable.
+        A toast appears in the top-right corner when an auto-drop occurs.</p>
+    <table>
+        <tr>
+            <th>LEVEL</th>
+            <th>PARTICLES</th>
+            <th>DYN. LIGHTS</th>
+            <th>ARC BURSTS</th>
+            <th>ARC LINKS</th>
+            <th>NOTES</th>
+        </tr>
+        <tr>
+            <td style="color: var(--neon-green);"><strong>HIGH</strong></td>
+            <td>up to 900</td>
+            <td>up to 140</td>
+            <td>up to 180</td>
+            <td>Dots → dashes → solid glow (by link intensity)</td>
+            <td>Full VFX — all effects update every frame</td>
+        </tr>
+        <tr>
+            <td style="color: var(--neon-yellow);"><strong>MED</strong></td>
+            <td>up to 620</td>
+            <td>up to 90</td>
+            <td>up to 140</td>
+            <td>Same as HIGH (intensity-based)</td>
+            <td>Arc bursts update every 2 frames; reduced light alpha</td>
+        </tr>
+        <tr>
+            <td style="color: #ff6666;"><strong>LOW</strong></td>
+            <td>up to 420</td>
+            <td>up to 65</td>
+            <td>up to 96</td>
+            <td>Same as HIGH (intensity-based)</td>
+            <td>Arc bursts update every 3 frames; minimum VFX load</td>
+        </tr>
+    </table>
 
     <h2>09. COMMAND CENTER (DEVELOPER ACCESS)</h2>
     <ul>
