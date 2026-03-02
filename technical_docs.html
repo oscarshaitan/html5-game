@@ -301,6 +301,9 @@
             <code>localStorage.neonAudioSettings</code>.
             <code>queueAutoSave()</code> debounces saves with a minimum frame interval to avoid per-frame writes;
             triggered on wave start, tower builds, upgrades, sells, and ability use.
+            <code>saveGame()</code> snapshots all state synchronously then defers the expensive
+            <code>JSON.stringify + localStorage.setItem</code> call to <code>requestIdleCallback()</code> (5 s deadline
+            fallback to synchronous) so it never blocks a render frame.
         </div>
     </div>
     <div class="method">
@@ -330,8 +333,10 @@
     <h2 id="waves">03. WAVE ORCHESTRATION</h2>
     <div class="method">
         <div class="method-name">startPrepPhase()</div>
-        <div class="desc">Sets pre-wave timer (30s), clears spawn queue, updates wave UI, and handles scheduled rift
-            growth logic.</div>
+        <div class="desc">Sets pre-wave timer (30s), clears spawn queue, updates wave UI, and dispatches scheduled rift
+            growth to the path worker via <code>_requestRiftGeneration()</code>. Generation runs off the main thread;
+            each completed rift arrives as a <code>path_ready</code> message that applies side-effects
+            (path push, tower destruction, UI update) on the main thread incrementally during the prep window.</div>
     </div>
     <div class="method">
         <div class="method-name">startWave()</div>
@@ -359,16 +364,38 @@
         </div>
     </div>
     <div class="method">
-        <div class="method-name">generateNewPath()</div>
-        <div class="desc">Creates additional rifts using zone-based candidate search and merge behavior:
+        <div class="method-name">generateNewPath() / path_worker.js</div>
+        <div class="desc">Creates additional rifts using zone-based candidate search and merge behavior.
+            For normal gameplay the full logic runs inside <code>scripts/workers/path_worker.js</code> off the main
+            thread (see below). The main-thread <code>generateNewPath()</code> copy is kept for the debug
+            <code>debugCreateRift()</code> hook only.
             <ul>
                 <li>Zone ring bounds: inner <code>6 + (zone-1)*3</code>, outer <code>6 + zone*3</code></li>
-                <li>Zone capacity: <code>zone 1 => 1</code>, otherwise <code>zone + 1</code></li>
+                <li>Zone capacity based on orbital shell formula <code>2·zone²·0.62</code></li>
                 <li>Direct core-link probability: <code>0.5 / (zone^2)</code></li>
-                <li>Global spacing guard: minimum 2.5 grid units</li>
-                <li>Merge fallback chooses nearest valid segment with minimum expansion distance of 12 cells</li>
+                <li>Global spacing guard: wave-scaled minimum rift distance (0.65–0.95 grid units)</li>
+                <li>Merge candidates capped at 240 (420 aggressive); A* called up to 260 times per rift attempt</li>
+                <li>Three relaxed levels (0→2) tried automatically per attempt, then aggressivePlacement fallback</li>
             </ul>
-            New path segments can destroy towers occupying newly opened lanes and refund 70% of invested value.
+            New path segments destroy towers in newly opened lanes and refund 70% of invested value (applied on the
+            main thread after the worker posts a <code>path_ready</code> message).
+        </div>
+    </div>
+    <div class="method">
+        <div class="method-name">_requestRiftGeneration() / _applyGeneratedRift() / _onPathWorkerMessage()</div>
+        <div class="desc">Path worker management layer in <code>03_abilities.js</code>.
+            <ul>
+                <li><strong>Message Main → Worker</strong>: <code>{ type: 'generate_batch', state: { cols, rows, wave,
+                    gridSize, zone0Radius, pathingRules, paths, hardpoints, count, maxAttempts } }</code></li>
+                <li><strong>Message Worker → Main (per rift)</strong>: <code>{ type: 'path_ready', newPathPoints,
+                    foundZone }</code> — triggers <code>_applyGeneratedRift()</code> which pushes to
+                    <code>paths[]</code>, destroys displaced towers, and calls <code>updateUI()</code>.</li>
+                <li><strong>Message Worker → Main (batch end)</strong>: <code>{ type: 'batch_done', generated,
+                    remaining }</code> — releases the busy flag; auto-continues if <code>pendingRiftGenerations
+                    &gt; 0</code> (handles the case where a new prep phase queued work while the worker was busy).</li>
+                <li>Worker is lazily created on first use; a single instance is reused across all waves.</li>
+                <li><code>maxAttempts</code> formula: <code>min(1800, 120 + count × 40)</code>.</li>
+            </ul>
         </div>
     </div>
     <div class="method">
@@ -414,8 +441,12 @@
 
     <h2 id="ui">06. USER INTERFACE</h2>
     <div class="method">
-        <div class="method-name">setupInput() / screenToWorld()</div>
-        <div class="desc">Mouse/touch abstraction for panning, zooming, tap-select, and click-build workflows.</div>
+        <div class="method-name">setupInput() / screenToWorld() / resetCamera()</div>
+        <div class="desc">Mouse/touch abstraction for panning, zooming, tap-select, and click-build workflows. Zoom
+            range: <code>0.1×</code> (min) to <code>1.0×</code> (max). <code>1.0×</code> is the default and matches
+            the <code>resetCamera()</code> centered view. Both wheel and pinch handlers clamp to the same range.
+            <code>screenToWorld(x, y)</code> converts screen-space coordinates to world-space using the current
+            <code>camera.x / camera.y / camera.zoom</code> state.</div>
     </div>
     <div class="method">
         <div class="method-name">updateUI()</div>
@@ -545,6 +576,31 @@
                 <li><strong>globalCompositeOperation: 'screen' eliminated</strong>: removed from arc links, arc bursts,
                     and dynamic lighting. All use source-over with tuned alpha to avoid GPU framebuffer read-back.</li>
             </ul>
+        </div>
+    </div>
+
+    <div class="method">
+        <div class="method-name">Async Rift Generation — Web Worker (C4-17)</div>
+        <div class="desc"><code>scripts/workers/path_worker.js</code> is a self-contained Web Worker that runs the
+            full A* rift-generation pipeline off the main thread.
+            <ul>
+                <li>Contains complete copies of <code>tryGenerateAtLevel()</code>, <code>findPathOnGrid()</code>, and
+                    all 8 pure-math helpers (<code>isGridNearHardpoint</code>, <code>getCoreRepulsionPenalty</code>,
+                    <code>getCoreGapSectors</code>, etc.) — no DOM, no canvas, no shared state.</li>
+                <li>Batch loop mirrors original <code>failStreak</code> thresholds (rl escalates at 3/9 failures;
+                    aggressive placement at 14); main thread only applies side-effects.</li>
+                <li>Eliminates the worst-case 50–2000 ms synchronous stall during prep phase and game-reset
+                    topology rebuilds.</li>
+            </ul>
+        </div>
+    </div>
+    <div class="method">
+        <div class="method-name">Deferred Save — requestIdleCallback (C4-18)</div>
+        <div class="desc"><code>saveGame()</code> captures a snapshot of all game state synchronously (cheap), then
+            defers <code>JSON.stringify + localStorage.setItem</code> to <code>requestIdleCallback()</code> with a
+            5 s deadline. On browsers without <code>requestIdleCallback</code> the write is synchronous as before.
+            Removes 5–20 ms serialization spikes from the render frame on late-game saves with large rift/tower
+            payloads.
         </div>
     </div>
 

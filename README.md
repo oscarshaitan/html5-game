@@ -7,7 +7,7 @@ You defend the core against escalating waves, expanding Rift networks, elite pat
 
 - Single-player endless defense
 - Desktop and mobile touch support
-- Camera pan and zoom
+- Camera pan and zoom (0.1× min to 1.0× max)
 - Auto-save with manual force-save option
 - Interactive onboarding tutorial
 - Inline gameplay hints
@@ -77,13 +77,15 @@ python -m http.server 8000
 html5-game/
   index.html
   scripts/
-    00_core.js
-    01_init.js
-    02_game_control.js
-    03_abilities.js
-    04_tutorial.js
-    05_loop.js
-    06_render.js
+    00_core.js          — constants, tower/arc/quality/pathing config
+    01_init.js          — canvas setup, input, camera, hardpoints, path helpers
+    02_game_control.js  — placement, selection, build UI
+    03_abilities.js     — EMP/Overclock, save/load, path worker management
+    04_tutorial.js      — tutorial flow, generateNewPath(), findPathOnGrid()
+    05_loop.js          — main game loop, spatial grid, wave/enemy logic
+    06_render.js        — all rendering (enemies, towers, VFX, UI), resetCamera()
+    workers/
+      path_worker.js    — Web Worker: async rift/path generation (off main thread)
   styles/
     00_base_ui.css
     01_abilities_debug.css
@@ -92,6 +94,7 @@ html5-game/
   technical_docs.html
   ROADMAP.md
   GAME_BALANCE_ANALYSIS.md
+  Improvements.md
 ```
 
 ## Documentation
@@ -107,6 +110,7 @@ html5-game/
 - Vanilla JavaScript (ES6+)
 - CSS3
 - Web Audio API
+- Web Workers (async rift path generation)
 - Local Storage
 
 ## Notes
