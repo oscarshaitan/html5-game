@@ -1,6 +1,6 @@
-# Neon Defense
+# The Neon Defense
 
-Neon Defense is a fast, neon-styled HTML5 tower defense game built with Canvas and vanilla JavaScript.
+The Neon Defense is a fast, neon-styled HTML5 tower defense game built with Canvas and vanilla JavaScript.
 You defend the core against escalating waves, expanding Rift networks, elite path mutations, and high-pressure late game scenarios.
 
 ## Current Status
@@ -74,7 +74,7 @@ python -m http.server 8000
 ## Project Structure
 
 ```text
-html5-game/
+the-neon-defense/
   index.html
   scripts/
     00_core.js          — constants, tower/arc/quality/pathing config

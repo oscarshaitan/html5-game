@@ -1,5 +1,5 @@
 /**
- * Neon Defense - Game Logic
+ * The Neon Defense - Game Logic
  */
 
 // --- Constants & Config ---

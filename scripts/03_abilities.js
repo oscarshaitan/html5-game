@@ -435,7 +435,7 @@ window.shareGame = async function () {
     const towerCounts = { basic: 0, rapid: 0, sniper: 0 };
     towers.forEach(t => { if (towerCounts[t.type] !== undefined) towerCounts[t.type]++; });
 
-    const shareText = `[NEON DEFENSE STATUS REPORT]\nCommander: ${playerName || "Unknown"}\nSector reached: WAVE ${wave}\nCredits secured: ${money}\nCommand Center: LEVEL ${baseLevel + 1}\nTowers: Basic(${towerCounts.basic}), Rapid(${towerCounts.rapid}), Sniper(${towerCounts.sniper})\nConfirmed Eliminations: ${killSummary}\n\nJoin the defense!`;
+    const shareText = `[THE NEON DEFENSE — STATUS REPORT]\nCommander: ${playerName || "Unknown"}\nSector reached: WAVE ${wave}\nCredits secured: ${money}\nCommand Center: LEVEL ${baseLevel + 1}\nTowers: Basic(${towerCounts.basic}), Rapid(${towerCounts.rapid}), Sniper(${towerCounts.sniper})\nConfirmed Eliminations: ${killSummary}\n\nJoin the defense!`;
 
     try {
         // Create an offline canvas to render the full report (Game + UI Overlay)
@@ -465,7 +465,7 @@ window.shareGame = async function () {
         octx.fillStyle = '#ff00ac';
         octx.font = 'bold 16px Orbitron, sans-serif';
         octx.textAlign = 'left';
-        octx.fillText('NEON DEFENSE - COMMANDER REPORT', padding, 25 + textOffset);
+        octx.fillText('THE NEON DEFENSE — COMMANDER REPORT', padding, 25 + textOffset);
 
         // Commander Name
         octx.fillStyle = '#00f3ff';
@@ -591,7 +591,7 @@ window.shareGame = async function () {
             const file = new File([blob], 'neon_defense_status.png', { type: 'image/png' });
 
             await navigator.share({
-                title: 'Neon Defense Status Report',
+                title: 'The Neon Defense — Status Report',
                 text: shareText,
                 files: [file]
             });

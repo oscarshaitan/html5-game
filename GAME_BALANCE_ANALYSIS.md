@@ -1,4 +1,4 @@
-# Neon Defense: Mechanics and Balance Analysis
+# The Neon Defense: Mechanics and Balance Analysis
 
 This document reviews likely gameplay risks and proposes design-level solutions.
 It is intentionally focused on design suggestions, not code changes.
@@ -215,4 +215,4 @@ Goal: let players express run identity through planned progression choices.
 If the game gets harder while giving fewer meaningful options, frustration rises.
 If the game gets harder while giving deeper strategic tools, mastery rises.
 
-Neon Defense should target the second path.
+The Neon Defense should target the second path.

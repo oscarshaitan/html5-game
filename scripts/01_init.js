@@ -13,7 +13,7 @@ window.onload = () => {
     // Check for save
     if (localStorage.getItem('neonDefenseSave')) {
         document.getElementById('start-screen').innerHTML = `
-            <h1>NEON DEFENSE</h1>
+            <h1>THE NEON DEFENSE</h1>
             <p>SAVE DATA FOUND</p>
             <button onclick="loadGame()">CONTINUE</button>
             <br><br>

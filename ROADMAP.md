@@ -1,4 +1,4 @@
-# Neon Defense Roadmap
+# The Neon Defense — Roadmap
 
 This roadmap tracks practical priorities for gameplay quality, balance stability, and long-term replayability.
 
