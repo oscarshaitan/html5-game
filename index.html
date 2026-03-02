@@ -146,7 +146,28 @@
             letter-spacing: 0.2em;
             color: rgba(0, 243, 255, 0.25);
         }
-    </style>
+
+        .footer-links {
+            position: fixed;
+            bottom: 1.5rem;
+            left: 1.5rem;
+            display: flex;
+            gap: 1.5rem;
+        }
+
+        .footer-links a {
+            font-size: 0.55rem;
+            letter-spacing: 0.2em;
+            color: rgba(0, 243, 255, 0.25);
+            text-decoration: none;
+            text-transform: uppercase;
+            transition: color 0.2s;
+        }
+
+        .footer-links a:hover {
+            color: var(--neon-blue);
+        }
+</style>
 </head>
 
 <body>
@@ -164,6 +185,11 @@
             <span>App</span>
             <span class="btn-label">Flutter</span>
         </div>
+    </div>
+
+    <div class="footer-links">
+        <a href="./js/manual.html">Manual</a>
+        <a href="https://github.com/oscarshaitan/the-neon-defense" target="_blank" rel="noopener">Repository</a>
     </div>
 
     <div class="version">v0.1.0</div>
