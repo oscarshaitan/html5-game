@@ -26,7 +26,8 @@
       "Bash(convert --version)",
       "Bash(node -e \"require\\(''sharp''\\)\")",
       "Bash(npx --yes sharp-cli --version)",
-      "Bash(ls \"c:/Users/otigr/VS Code projects/the-neon-defense/\"*.png)"
+      "Bash(ls \"c:/Users/otigr/VS Code projects/the-neon-defense/\"*.png)",
+      "Bash(gh run list --limit 10)"
     ]
   }
 }
